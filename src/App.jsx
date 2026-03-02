@@ -72,12 +72,30 @@ function TicketCard({ ticket, index }) {
 export default function App() {
   const [step, setStep] = useState(1);
   const [transcript, setTranscript] = useState('');
-  const [projectKey, setProjectKey] = useState('PROJ');
+  const [projectKey, setProjectKey] = useState('KAN');
   const [prd, setPrd] = useState('');
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState(null);
+
+  async function submitToJira() {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API}/submit-to-jira`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickets }),
+      });
+      const data = await res.json();
+      setSubmitResult(data);
+    } catch (e) {
+      setSubmitResult({ error: e.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function generatePRD() {
     setLoading(true); setError('');
@@ -104,6 +122,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setTickets(data.tickets);
+      setSubmitResult(null);
       setStep(3);
     } catch (e) { setError(e.message); }
     setLoading(false);
@@ -236,16 +255,42 @@ export default function App() {
               <pre className="mt-3 text-xs text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-xl p-4 overflow-x-auto overflow-y-auto max-h-96 whitespace-pre-wrap break-all">{JSON.stringify(tickets, null, 2)}</pre>
             </details>
 
-            {/* Jira submit placeholder */}
-            <div className="mt-8 p-6 bg-neutral-50 border border-dashed border-green-300/40 rounded-xl">
-              <div className="flex items-center gap-3 mb-2">
+            {/* Jira submit */}
+            <div className="mt-8 p-6 bg-neutral-50 border border-green-300/40 rounded-xl">
+              <div className="flex items-center gap-3 mb-3">
                 <Send size={18} className="text-green-700/60" />
-                <h3 className="font-medium text-neutral-400">Submit to Jira</h3>
+                <h3 className="font-medium text-neutral-700">Submit to Jira</h3>
               </div>
-              <p className="text-sm text-neutral-400">
-                The Jira API integration endpoint is stubbed at <code className="text-green-600 bg-white px-1.5 py-0.5 rounded text-xs">POST /api/submit-to-jira</code>. 
-                Open <code className="text-green-600 bg-white px-1.5 py-0.5 rounded text-xs">server.js</code> and wire up your Jira base URL, email, and API token to push these tickets directly.
-              </p>
+              {submitResult ? (
+                <div className={`text-sm p-3 rounded-lg ${submitResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                  {submitResult.error ? (
+                    <p>❌ {submitResult.error}</p>
+                  ) : (
+                    <div>
+                      <p>✅ {submitResult.created}/{submitResult.total} tickets created in Jira</p>
+                      {submitResult.failed > 0 && <p className="mt-1">⚠️ {submitResult.failed} failed</p>}
+                      {submitResult.results && submitResult.results.map((r, i) => (
+                        <div key={i} className="mt-1 text-xs">
+                          {r.success ? (
+                            <span>✓ <a href={`https://srinambudiripad.atlassian.net/browse/${r.data.key}`} target="_blank" rel="noreferrer" className="underline text-green-600">{r.data.key}</a></span>
+                          ) : (
+                            <span>✗ Ticket {i+1}: {JSON.stringify(r.data?.errors || r.data?.errorMessages || r.error)}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={submitToJira}
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                >
+                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  {submitting ? 'Submitting...' : `Push ${tickets.length} Tickets to Jira`}
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
@@ -113,38 +114,49 @@ Return ONLY valid JSON — an array of ticket objects. No markdown, no explanati
   }
 });
 
-// Step 3: Placeholder — Submit to Jira
-// TODO: Implement with your Jira credentials
-// POST /rest/api/3/issue with Basic auth or OAuth
+// Step 3: Submit to Jira
 app.post('/api/submit-to-jira', async (req, res) => {
-  const { tickets, jiraBaseUrl, jiraEmail, jiraApiToken } = req.body;
+  const { tickets } = req.body;
+  const jiraBaseUrl = process.env.JIRA_BASE_URL;
+  const jiraEmail = process.env.JIRA_USER_EMAIL;
+  const jiraApiToken = process.env.JIRA_API_TOKEN;
 
-  // ──────────────────────────────────────────────
-  // YOUR JIRA INTEGRATION GOES HERE
-  //
-  // Example implementation:
-  //
-  // const results = [];
-  // for (const ticket of tickets) {
-  //   const response = await fetch(`${jiraBaseUrl}/rest/api/3/issue`, {
-  //     method: 'POST',
-  //     headers: {
-  //       'Authorization': `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`,
-  //       'Content-Type': 'application/json',
-  //       'Accept': 'application/json',
-  //     },
-  //     body: JSON.stringify(ticket),
-  //   });
-  //   const data = await response.json();
-  //   results.push(data);
-  // }
-  // return res.json({ results });
-  // ──────────────────────────────────────────────
+  if (!jiraBaseUrl || !jiraEmail || !jiraApiToken) {
+    return res.status(500).json({ error: 'Jira credentials not configured in .env' });
+  }
+  if (!tickets || !tickets.length) {
+    return res.status(400).json({ error: 'No tickets provided' });
+  }
 
-  res.json({
-    message: 'Jira submission endpoint — not yet implemented. See server.js to wire up your Jira credentials.',
-    ticketCount: tickets?.length || 0,
-  });
+  const projectKey = process.env.JIRA_PROJECT_KEY || 'KAN';
+  const authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`;
+  const results = [];
+
+  for (const ticket of tickets) {
+    // Ensure project key is set correctly
+    if (ticket.fields) {
+      ticket.fields.project = { key: projectKey };
+    }
+    try {
+      const response = await fetch(`${jiraBaseUrl}/rest/api/3/issue`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(ticket),
+      });
+      const data = await response.json();
+      results.push({ success: response.ok, status: response.status, data });
+    } catch (err) {
+      results.push({ success: false, error: err.message });
+    }
+  }
+
+  const created = results.filter(r => r.success).length;
+  const failed = results.filter(r => !r.success).length;
+  res.json({ created, failed, total: tickets.length, results });
 });
 
 const PORT = 3010;

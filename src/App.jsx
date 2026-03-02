@@ -18,11 +18,11 @@ function StepIndicator({ current }) {
         const active = current === s.id;
         return (
           <React.Fragment key={s.id}>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${active ? 'bg-gray-800 text-white border border-gray-700' : done ? 'bg-gray-100 text-gray-600 border border-gray-200' : 'bg-white text-gray-400 border border-gray-200'}`}>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${active ? 'bg-red-600/20 text-red-400 border border-red-600/50' : done ? 'bg-red-900/30 text-red-300 border border-red-800/50' : 'bg-neutral-900 text-neutral-600 border border-neutral-800'}`}>
               {done ? <CheckCircle2 size={16} /> : <Icon size={16} />}
               {s.label}
             </div>
-            {i < steps.length - 1 && <ArrowRight size={16} className="text-gray-300" />}
+            {i < steps.length - 1 && <ArrowRight size={16} className="text-neutral-700" />}
           </React.Fragment>
         );
       })}
@@ -33,8 +33,8 @@ function StepIndicator({ current }) {
 function TicketCard({ ticket, index }) {
   const [open, setOpen] = useState(false);
   const f = ticket.fields;
-  const priorityColors = { Highest: 'text-red-500', High: 'text-orange-500', Medium: 'text-yellow-600', Low: 'text-blue-500', Lowest: 'text-gray-400' };
-  const typeColors = { Epic: 'bg-purple-50 text-purple-600', Story: 'bg-green-50 text-green-600', Task: 'bg-blue-50 text-blue-600', Bug: 'bg-red-50 text-red-600' };
+  const priorityColors = { Highest: 'text-red-400', High: 'text-red-500', Medium: 'text-red-600', Low: 'text-neutral-400', Lowest: 'text-neutral-500' };
+  const typeColors = { Epic: 'bg-red-900/40 text-red-300', Story: 'bg-red-900/30 text-red-400', Task: 'bg-neutral-800 text-neutral-300', Bug: 'bg-red-600/20 text-red-400' };
 
   function extractText(node) {
     if (!node) return '';
@@ -44,24 +44,24 @@ function TicketCard({ ticket, index }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-150 hover:border-gray-300 transition-all overflow-hidden">
+    <div className="bg-neutral-900 rounded-xl border border-neutral-800 hover:border-red-900/60 transition-all overflow-hidden">
       <div className="p-4 cursor-pointer flex items-start justify-between gap-3" onClick={() => setOpen(!open)}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[f.issuetype?.name] || 'bg-gray-50 text-gray-500'}`}>{f.issuetype?.name || 'Task'}</span>
-            <span className={`text-xs font-medium ${priorityColors[f.priority?.name] || 'text-gray-400'}`}>{f.priority?.name}</span>
-            {f.labels?.map(l => <span key={l} className="text-xs bg-gray-50 text-gray-500 px-2 py-0.5 rounded">{l}</span>)}
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[f.issuetype?.name] || 'bg-neutral-800 text-neutral-400'}`}>{f.issuetype?.name || 'Task'}</span>
+            <span className={`text-xs font-medium ${priorityColors[f.priority?.name] || 'text-neutral-500'}`}>{f.priority?.name}</span>
+            {f.labels?.map(l => <span key={l} className="text-xs bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded">{l}</span>)}
           </div>
-          <h3 className="font-semibold text-gray-800 text-sm">{f.summary}</h3>
+          <h3 className="font-semibold text-neutral-100 text-sm">{f.summary}</h3>
         </div>
-        {open ? <ChevronUp size={16} className="text-gray-400 shrink-0 mt-1" /> : <ChevronDown size={16} className="text-gray-400 shrink-0 mt-1" />}
+        {open ? <ChevronUp size={16} className="text-neutral-500 shrink-0 mt-1" /> : <ChevronDown size={16} className="text-neutral-500 shrink-0 mt-1" />}
       </div>
       {open && (
-        <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-          <div className="text-xs text-gray-500 whitespace-pre-wrap leading-relaxed mb-3 break-words overflow-hidden">{extractText(f.description)}</div>
+        <div className="px-4 pb-4 border-t border-neutral-800 pt-3">
+          <div className="text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed mb-3 break-words overflow-hidden">{extractText(f.description)}</div>
           <details className="group">
-            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors">View raw JSON</summary>
-            <pre className="mt-2 text-xs text-gray-400 bg-gray-50 rounded-lg p-3 overflow-x-auto overflow-y-auto max-h-60 break-all whitespace-pre-wrap">{JSON.stringify(ticket, null, 2)}</pre>
+            <summary className="text-xs text-neutral-600 cursor-pointer hover:text-neutral-400 transition-colors">View raw JSON</summary>
+            <pre className="mt-2 text-xs text-neutral-500 bg-black rounded-lg p-3 overflow-x-auto overflow-y-auto max-h-60 break-all whitespace-pre-wrap">{JSON.stringify(ticket, null, 2)}</pre>
           </details>
         </div>
       )}
@@ -116,17 +116,17 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800">
+    <div className="min-h-screen bg-black text-neutral-100">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white">
+      <header className="border-b border-neutral-800 bg-black">
         <div className="max-w-5xl mx-auto px-6 py-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg border border-gray-200">
-              <FileText size={24} className="text-gray-600" />
+            <div className="p-2 bg-red-600/15 rounded-lg border border-red-800/50">
+              <FileText size={24} className="text-red-500" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Transcript → PRD → Jira</h1>
-              <p className="text-sm text-gray-400">Paste a Teams transcript, get a PRD, generate Jira-ready tickets</p>
+              <h1 className="text-xl font-bold text-red-500">Transcript → PRD → Jira</h1>
+              <p className="text-sm text-neutral-500">Paste a Teams transcript, get a PRD, generate Jira-ready tickets</p>
             </div>
           </div>
         </div>
@@ -136,7 +136,7 @@ export default function App() {
         <StepIndicator current={step} />
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-600 text-sm">
+          <div className="mb-6 p-4 bg-red-900/20 border border-red-800/50 rounded-xl flex items-center gap-3 text-red-400 text-sm">
             <AlertCircle size={18} />
             {error}
           </div>
@@ -145,20 +145,20 @@ export default function App() {
         {/* Step 1: Transcript Input */}
         {step === 1 && (
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">Paste your Teams meeting transcript</label>
+            <label className="block text-sm font-medium text-neutral-300 mb-2">Paste your Teams meeting transcript</label>
             <textarea
-              className="w-full h-80 bg-white border border-gray-200 rounded-xl p-4 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-300 resize-none font-mono"
+              className="w-full h-80 bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-sm text-neutral-200 placeholder-neutral-700 focus:outline-none focus:border-red-700 focus:ring-1 focus:ring-red-900/50 resize-none font-mono"
               placeholder={"Paste your Microsoft Teams transcript here...\n\nExample:\n0:00:01 — John Smith\nAlright, let's kick off the sprint planning...\n\n0:01:15 — Jane Doe\nI think we need to prioritize the checkout flow..."}
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
             />
             <div className="flex items-center justify-between mt-4">
-              <span className="text-xs text-gray-400">{transcript.length.toLocaleString()} characters</span>
+              <span className="text-xs text-neutral-600">{transcript.length.toLocaleString()} characters</span>
               <div className="flex items-center gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 mr-2">Jira Project Key:</label>
+                  <label className="text-xs text-neutral-500 mr-2">Jira Project Key:</label>
                   <input
-                    className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 w-24 focus:outline-none focus:border-gray-400"
+                    className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5 text-sm text-neutral-200 w-24 focus:outline-none focus:border-red-700"
                     value={projectKey}
                     onChange={e => setProjectKey(e.target.value.toUpperCase())}
                     placeholder="PROJ"
@@ -167,7 +167,7 @@ export default function App() {
                 <button
                   onClick={generatePRD}
                   disabled={!transcript.trim() || loading}
-                  className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-200 disabled:text-gray-400 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all"
+                  className="flex items-center gap-2 bg-red-600 hover:bg-red-500 disabled:bg-neutral-800 disabled:text-neutral-600 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all"
                 >
                   {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
                   Generate PRD
@@ -181,25 +181,25 @@ export default function App() {
         {step === 2 && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-gray-600">Generated PRD</label>
+              <label className="text-sm font-medium text-neutral-300">Generated PRD</label>
               <div className="flex gap-2">
-                <button onClick={() => setStep(1)} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">← Back to transcript</button>
-                <button onClick={() => copyToClipboard(prd, 'prd')} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                <button onClick={() => setStep(1)} className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors">← Back to transcript</button>
+                <button onClick={() => copyToClipboard(prd, 'prd')} className="flex items-center gap-1 text-xs text-neutral-500 hover:text-red-400 transition-colors">
                   <Copy size={12} /> {copied === 'prd' ? 'Copied!' : 'Copy'}
                 </button>
               </div>
             </div>
             <textarea
-              className="w-full h-96 bg-white border border-gray-200 rounded-xl p-4 text-sm text-gray-700 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-300 resize-none font-mono leading-relaxed"
+              className="w-full h-96 bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-sm text-neutral-200 focus:outline-none focus:border-red-700 focus:ring-1 focus:ring-red-900/50 resize-none font-mono leading-relaxed"
               value={prd}
               onChange={e => setPrd(e.target.value)}
             />
-            <p className="text-xs text-gray-400 mt-2 mb-4">You can edit the PRD above before generating tickets.</p>
+            <p className="text-xs text-neutral-600 mt-2 mb-4">You can edit the PRD above before generating tickets.</p>
             <div className="flex justify-end">
               <button
                 onClick={generateTickets}
                 disabled={loading}
-                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-200 disabled:text-gray-400 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all"
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-500 disabled:bg-neutral-800 disabled:text-neutral-600 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Ticket size={16} />}
                 Generate Jira Tickets
@@ -213,14 +213,14 @@ export default function App() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-800">{tickets.length} Jira Tickets Generated</h2>
-                <p className="text-xs text-gray-400">Each ticket is in exact Jira REST API format (POST /rest/api/3/issue)</p>
+                <h2 className="text-lg font-semibold text-neutral-100">{tickets.length} Jira Tickets Generated</h2>
+                <p className="text-xs text-neutral-500">Each ticket is in exact Jira REST API format (POST /rest/api/3/issue)</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setStep(2)} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">← Back to PRD</button>
+                <button onClick={() => setStep(2)} className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors">← Back to PRD</button>
                 <button
                   onClick={() => copyToClipboard(JSON.stringify(tickets, null, 2), 'tickets')}
-                  className="flex items-center gap-1 text-xs bg-white border border-gray-200 hover:border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg transition-all"
+                  className="flex items-center gap-1 text-xs bg-neutral-900 border border-neutral-800 hover:border-red-800/50 text-neutral-400 px-3 py-1.5 rounded-lg transition-all"
                 >
                   <Copy size={12} /> {copied === 'tickets' ? 'Copied!' : 'Copy All JSON'}
                 </button>
@@ -232,19 +232,19 @@ export default function App() {
 
             {/* Raw JSON export */}
             <details className="group">
-              <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-600 transition-colors font-medium">View full JSON payload</summary>
-              <pre className="mt-3 text-xs text-gray-400 bg-white border border-gray-200 rounded-xl p-4 overflow-x-auto overflow-y-auto max-h-96 whitespace-pre-wrap break-all">{JSON.stringify(tickets, null, 2)}</pre>
+              <summary className="text-sm text-neutral-500 cursor-pointer hover:text-red-400 transition-colors font-medium">View full JSON payload</summary>
+              <pre className="mt-3 text-xs text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-xl p-4 overflow-x-auto overflow-y-auto max-h-96 whitespace-pre-wrap break-all">{JSON.stringify(tickets, null, 2)}</pre>
             </details>
 
             {/* Jira submit placeholder */}
-            <div className="mt-8 p-6 bg-white border border-dashed border-gray-300 rounded-xl">
+            <div className="mt-8 p-6 bg-neutral-900 border border-dashed border-red-900/40 rounded-xl">
               <div className="flex items-center gap-3 mb-2">
-                <Send size={18} className="text-gray-400" />
-                <h3 className="font-medium text-gray-500">Submit to Jira</h3>
+                <Send size={18} className="text-red-600/60" />
+                <h3 className="font-medium text-neutral-400">Submit to Jira</h3>
               </div>
-              <p className="text-sm text-gray-400">
-                The Jira API integration endpoint is stubbed at <code className="text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded text-xs">POST /api/submit-to-jira</code>. 
-                Open <code className="text-gray-600 bg-gray-50 px-1.5 py-0.5 rounded text-xs">server.js</code> and wire up your Jira base URL, email, and API token to push these tickets directly.
+              <p className="text-sm text-neutral-500">
+                The Jira API integration endpoint is stubbed at <code className="text-red-400 bg-black px-1.5 py-0.5 rounded text-xs">POST /api/submit-to-jira</code>. 
+                Open <code className="text-red-400 bg-black px-1.5 py-0.5 rounded text-xs">server.js</code> and wire up your Jira base URL, email, and API token to push these tickets directly.
               </p>
             </div>
           </div>

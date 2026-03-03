@@ -1,9 +1,162 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #fafbfc;
+}
+
+::selection {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Refined scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Smooth transitions */
+*, *::before, *::after {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Exclude elements that shouldn't transition */
+textarea, input, pre, code, .no-transition {
+  transition-property: border-color, box-shadow;
+}
+
+/* ========== Notion-style PRD Document ========== */
+.notion-doc {
+  color: #37352f;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.notion-doc .prose {
+  --tw-prose-body: #37352f;
+  --tw-prose-headings: #37352f;
+}
+
+.notion-doc .prose h1 {
+  font-size: 2em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-top: 2em;
+  margin-bottom: 0.25em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.notion-doc .prose h1:first-child {
+  margin-top: 0;
+}
+
+.notion-doc .prose h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 1.5em;
+  margin-bottom: 0.25em;
+}
+
+.notion-doc .prose h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.25em;
+  margin-bottom: 0.25em;
+}
+
+.notion-doc .prose p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.notion-doc .prose ul,
+.notion-doc .prose ol {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.notion-doc .prose li {
+  margin-top: 0.125em;
+  margin-bottom: 0.125em;
+}
+
+.notion-doc .prose blockquote {
+  border-left-color: #e5e7eb;
+  border-left-width: 3px;
+  padding-left: 1em;
+  color: #6b7280;
+  font-style: normal;
+}
+
+.notion-doc .prose table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875em;
+}
+
+.notion-doc .prose th {
+  background-color: #f9fafb;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5em 0.75em;
+  border: 1px solid #e5e7eb;
+}
+
+.notion-doc .prose td {
+  padding: 0.5em 0.75em;
+  border: 1px solid #e5e7eb;
+}
+
+.notion-doc .prose code {
+  background-color: #f3f4f6;
+  padding: 0.125em 0.375em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+  color: #ef4444;
+}
+
+.notion-doc .prose pre {
+  background-color: #1f2937;
+  border-radius: 0.5em;
+}
+
+.notion-doc .prose hr {
+  border-color: #e5e7eb;
+  margin-top: 2em;
+  margin-bottom: 2em;
+}
+
+.notion-doc .prose strong {
+  font-weight: 600;
+  color: #37352f;
+}
+
+/* Highlight overlaps: nested marks get slightly darker */
+.notion-doc mark mark {
+  background-color: rgba(252, 211, 77, 0.4);
 }

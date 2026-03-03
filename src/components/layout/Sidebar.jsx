@@ -108,7 +108,7 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
                     <div className="relative">
                       <button
                         onClick={() => setJiraMenuOpen(prev => !prev)}
-                        className="p-0.5 rounded-[3px] text-[#9b9a97] opacity-0 group-hover:opacity-100 hover:bg-[rgba(55,53,47,0.08)] transition-opacity"
+                        className="p-0.5 rounded-[3px] text-[#9b9a97] hover:bg-[rgba(55,53,47,0.08)]"
                       >
                         <MoreHorizontal size={14} />
                       </button>
@@ -127,7 +127,7 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
                 ) : (
                   <a
                     href="/auth/login"
-                    className="text-[11px] font-medium text-white bg-[#37352f] hover:bg-[#2f2d28] px-2 py-0.5 rounded-[3px]"
+                    className="text-xs font-medium text-[#37352f] border border-[#d3d3d3] hover:border-[#b0b0b0] px-2 py-0.5 rounded-[3px]"
                   >
                     Connect
                   </a>
@@ -140,7 +140,7 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
                 <img src="/icons/teams.png" alt="Teams" className="w-4 h-4" />
                 <span className="text-sm text-[#37352f]">Teams</span>
               </div>
-              <span className="text-[11px] font-medium text-white bg-[#37352f] hover:bg-[#2f2d28] px-2 py-0.5 rounded-[3px] cursor-default opacity-50" title="Coming soon">
+              <span className="text-xs font-medium text-[#37352f] border border-[#d3d3d3] px-2 py-0.5 rounded-[3px] cursor-default opacity-50" title="Coming soon">
                 Connect
               </span>
             </div>
@@ -173,7 +173,10 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
             {!collapsed && (
               <div className="text-left min-w-0">
                 <p className="text-sm font-medium text-[#37352f] truncate">{user.name}</p>
-                <p className="text-xs text-[#9b9a97] truncate">{user.jobTitle}</p>
+                <p className="text-xs text-[#9b9a97] truncate">
+                  {user.jobTitle}
+                  {testMode && <span className="ml-1.5 text-[10px] font-semibold text-amber-600 uppercase">Test Mode On</span>}
+                </p>
               </div>
             )}
           </button>

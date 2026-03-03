@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Loader2, Trash2, Clock } from 'lucide-react';
+import { FileText, Plus, Loader2, Trash2 } from 'lucide-react';
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -79,18 +79,16 @@ export default function PRDList({ token, onNewPRD, onOpenPRD }) {
             <div
               key={prd.id}
               onClick={() => onOpenPRD(prd.id)}
-              className="bg-white border border-[#e9e8e4] rounded-[3px] p-4 hover:bg-[rgba(55,53,47,0.08)] cursor-pointer group flex items-center justify-between"
+              className="bg-white border border-[#e9e8e4] rounded-[3px] p-4 hover:bg-[rgba(55,53,47,0.08)] cursor-pointer group flex items-center gap-3"
             >
+              <div className="p-2 rounded-lg bg-[rgba(55,53,47,0.06)] text-[#9b9a97] shrink-0">
+                <FileText size={18} />
+              </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-medium text-[#37352f] text-sm truncate">{prd.title || 'Untitled PRD'}</h3>
-                  <span className="text-xs bg-[rgba(55,53,47,0.06)] text-[#787774] px-2 py-0.5 rounded-[3px] shrink-0">{prd.project_key}</span>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-[#9b9a97]">
-                  <span>{prd.creator_name}</span>
-                  <span className="inline-block bg-[rgba(55,53,47,0.06)] text-[#787774] px-1.5 py-0.5 rounded-[3px] text-[10px] font-medium">{prd.creator_job_title}</span>
-                  <span className="flex items-center gap-1"><Clock size={10} /> {formatDate(prd.updated_at)}</span>
-                </div>
+                <h3 className="font-medium text-[#37352f] text-sm truncate">{prd.title || 'Untitled PRD'}</h3>
+                <p className="text-xs text-[#9b9a97] mt-0.5 truncate">
+                  Created by {prd.creator_name} · {formatDate(prd.updated_at)}
+                </p>
               </div>
               <button
                 onClick={(e) => deletePRD(prd.id, e)}

@@ -176,11 +176,7 @@ export default function TicketCard({ ticket, index, onUpdate, onDelete, currentU
             </div>
           ) : (
             <>
-              <div className="text-xs text-[#787774] whitespace-pre-wrap leading-relaxed mb-3 break-words overflow-hidden">{extractText(f.description)}</div>
-              <details className="group">
-                <summary className="text-xs text-[#9b9a97] cursor-pointer hover:text-[#37352f]">View raw JSON</summary>
-                <pre className="mt-2 text-xs text-[#787774] bg-[rgba(55,53,47,0.04)] border border-[#e9e8e4] rounded-[3px] p-3 overflow-x-auto overflow-y-auto max-h-60 break-all whitespace-pre-wrap">{JSON.stringify(ticket, null, 2)}</pre>
-              </details>
+              <div className="text-sm text-[#37352f] whitespace-pre-wrap leading-relaxed mb-3 break-words overflow-hidden">{extractText(f.description)}</div>
             </>
           )}
           <div className="mt-3 border-t border-[#e9e8e4] pt-3">

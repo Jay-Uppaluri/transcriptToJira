@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, FileText, ArrowLeft } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const JOB_TITLES = ['Product', 'Engineering', 'UX Designer', 'QA', 'Admin', 'Other'];
 
@@ -54,15 +54,11 @@ export default function AuthPage({ onAuth }) {
       <div className="w-full max-w-sm">
         <button
           onClick={() => navigate('/')}
-          className="flex items-center gap-1 text-sm text-[#787774] hover:text-[#37352f] mb-6"
+          className="w-full flex items-center justify-center gap-2 mb-8 hover:opacity-80 transition-opacity"
         >
-          <ArrowLeft size={14} />
-          Back to home
-        </button>
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <FileText size={28} className="text-[#37352f]" />
+          <img src="/icons/cortex-header-logo.png" alt="Cortex" className="w-7 h-7" />
           <h1 className="text-2xl font-semibold text-[#37352f]">Cortex</h1>
-        </div>
+        </button>
 
         <div className="bg-white border border-[#e9e8e4] rounded-[3px] p-6">
           <h2 className="text-lg font-medium text-[#37352f] mb-1">

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Mic, Clock, Users, Calendar, Copy, Check, FileText } from 'lucide-react';
+import { ChevronRight, Mic, Clock, Users, Calendar, Copy, Check, FileText } from 'lucide-react';
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -56,13 +56,18 @@ export default function TranscriptView({ transcript, onBack, onGeneratePRD }) {
       {/* Toolbar */}
       <div className="sticky top-0 z-10 bg-white border-b border-[#e9e8e4]">
         <div className="max-w-4xl mx-auto px-6 py-3 flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-[#787774] hover:text-[#37352f]"
-          >
-            <ArrowLeft size={16} />
-            Back
-          </button>
+          <nav className="flex items-center gap-1.5 text-sm min-w-0">
+            <button
+              onClick={onBack}
+              className="text-[#787774] hover:text-[#37352f] shrink-0"
+            >
+              Transcripts
+            </button>
+            <ChevronRight size={14} className="text-[#c4c4c0] shrink-0" />
+            <span className="text-[#37352f] font-medium truncate max-w-[300px]">
+              {transcript.title}
+            </span>
+          </nav>
 
           <div className="flex-1" />
 

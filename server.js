@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import OpenAI from 'openai';
 import db, { createSession, getSession, saveJiraConnection, getJiraConnection, deleteJiraConnection } from './server/db.js';
@@ -570,7 +572,14 @@ app.post('/api/submit-to-jira', authenticateToken, async (req, res) => {
   res.json({ created, failed, total: tickets.length, results, siteUrl });
 });
 
-const PORT = 3010;
+// Serve static frontend in production
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(path.join(__dirname, 'dist')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3010;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`API server running on port ${PORT}`);
 });

@@ -8,18 +8,18 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #fafbfc;
+  background-color: #ffffff;
+  color: #37352f;
 }
 
 ::selection {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: rgba(45,170,219,0.3);
 }
 
 /* Refined scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -27,24 +27,24 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: rgba(55,53,47,0.16);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: rgba(55,53,47,0.3);
 }
 
-/* Smooth transitions */
+/* Smooth transitions — limited to bg/border, 80ms */
 *, *::before, *::after {
-  transition-property: color, background-color, border-color, box-shadow;
-  transition-duration: 150ms;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-property: background-color, border-color;
+  transition-duration: 80ms;
+  transition-timing-function: ease;
 }
 
 /* Exclude elements that shouldn't transition */
 textarea, input, pre, code, .no-transition {
-  transition-property: border-color, box-shadow;
+  transition-property: border-color;
 }
 
 /* ========== Notion-style PRD Document ========== */
@@ -66,7 +66,7 @@ textarea, input, pre, code, .no-transition {
   margin-top: 2em;
   margin-bottom: 0.25em;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e9e8e4;
 }
 
 .notion-doc .prose h1:first-child {
@@ -106,10 +106,10 @@ textarea, input, pre, code, .no-transition {
 }
 
 .notion-doc .prose blockquote {
-  border-left-color: #e5e7eb;
+  border-left-color: #e9e8e4;
   border-left-width: 3px;
   padding-left: 1em;
-  color: #6b7280;
+  color: #787774;
   font-style: normal;
 }
 
@@ -120,33 +120,33 @@ textarea, input, pre, code, .no-transition {
 }
 
 .notion-doc .prose th {
-  background-color: #f9fafb;
+  background-color: #f7f6f3;
   font-weight: 600;
   text-align: left;
   padding: 0.5em 0.75em;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e9e8e4;
 }
 
 .notion-doc .prose td {
   padding: 0.5em 0.75em;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e9e8e4;
 }
 
 .notion-doc .prose code {
-  background-color: #f3f4f6;
+  background-color: rgba(135,131,120,0.15);
   padding: 0.125em 0.375em;
-  border-radius: 0.25em;
+  border-radius: 3px;
   font-size: 0.875em;
-  color: #ef4444;
+  color: #eb5757;
 }
 
 .notion-doc .prose pre {
   background-color: #1f2937;
-  border-radius: 0.5em;
+  border-radius: 3px;
 }
 
 .notion-doc .prose hr {
-  border-color: #e5e7eb;
+  border-color: #e9e8e4;
   margin-top: 2em;
   margin-bottom: 2em;
 }
@@ -159,4 +159,15 @@ textarea, input, pre, code, .no-transition {
 /* Highlight overlaps: nested marks get slightly darker */
 .notion-doc mark mark {
   background-color: rgba(252, 211, 77, 0.4);
+}
+
+/* Landing page orbit animations */
+@keyframes orbit-forward {
+  from { transform: rotate(var(--start, 0deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * var(--start, 0deg))); }
+  to   { transform: rotate(calc(var(--start, 0deg) + 360deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * (var(--start, 0deg) + 360deg))); }
+}
+
+@keyframes orbit-reverse {
+  from { transform: rotate(var(--start, 0deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * var(--start, 0deg))); }
+  to   { transform: rotate(calc(var(--start, 0deg) - 360deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * (var(--start, 0deg) - 360deg))); }
 }

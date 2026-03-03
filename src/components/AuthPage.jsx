@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Loader2, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, FileText, ArrowLeft } from 'lucide-react';
 
 const JOB_TITLES = ['Product', 'Engineering', 'UX Designer', 'QA', 'Admin', 'Other'];
 
 export default function AuthPage({ onAuth }) {
+  const navigate = useNavigate();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,23 +50,30 @@ export default function AuthPage({ onAuth }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafbfc] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-white flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-1 text-sm text-[#787774] hover:text-[#37352f] mb-6"
+        >
+          <ArrowLeft size={14} />
+          Back to home
+        </button>
         <div className="flex items-center justify-center gap-2 mb-8">
-          <FileText size={28} className="text-accent-600" />
-          <h1 className="text-2xl font-bold text-gray-900">Transcript to Jira</h1>
+          <FileText size={28} className="text-[#37352f]" />
+          <h1 className="text-2xl font-semibold text-[#37352f]">Cortex</h1>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-soft">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">
+        <div className="bg-white border border-[#e9e8e4] rounded-[3px] p-6">
+          <h2 className="text-lg font-medium text-[#37352f] mb-1">
             {isSignup ? 'Create an account' : 'Welcome back'}
           </h2>
-          <p className="text-sm text-gray-500 mb-5">
+          <p className="text-sm text-[#787774] mb-5">
             {isSignup ? 'Sign up to start generating PRDs' : 'Log in to continue'}
           </p>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+            <div className="mb-4 p-3 bg-[#fef2f2] border border-[#e9e8e4] rounded-[3px] text-sm text-[#e03e3e]">
               {error}
             </div>
           )}
@@ -73,23 +82,23 @@ export default function AuthPage({ onAuth }) {
             {isSignup && (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Full Name</label>
+                  <label className="block text-xs font-medium text-[#787774] mb-1">Full Name</label>
                   <input
                     type="text"
                     required
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-100"
+                    className="w-full bg-white border border-[#e9e8e4] rounded-[3px] px-3 py-2 text-sm text-[#37352f] focus:outline-none focus:border-[#2383e2] focus:ring-1 focus:ring-[#2383e2]"
                     placeholder="Jane Smith"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Job Title</label>
+                  <label className="block text-xs font-medium text-[#787774] mb-1">Job Title</label>
                   <select
                     required
                     value={jobTitle}
                     onChange={e => setJobTitle(e.target.value)}
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-100"
+                    className="w-full bg-white border border-[#e9e8e4] rounded-[3px] px-3 py-2 text-sm text-[#37352f] focus:outline-none focus:border-[#2383e2] focus:ring-1 focus:ring-[#2383e2]"
                   >
                     <option value="">Select your role...</option>
                     {JOB_TITLES.map(t => (
@@ -100,32 +109,32 @@ export default function AuthPage({ onAuth }) {
               </>
             )}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+              <label className="block text-xs font-medium text-[#787774] mb-1">Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-100"
+                className="w-full bg-white border border-[#e9e8e4] rounded-[3px] px-3 py-2 text-sm text-[#37352f] focus:outline-none focus:border-[#2383e2] focus:ring-1 focus:ring-[#2383e2]"
                 placeholder="you@company.com"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Password</label>
+              <label className="block text-xs font-medium text-[#787774] mb-1">Password</label>
               <input
                 type="password"
                 required
                 minLength={6}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-100"
+                className="w-full bg-white border border-[#e9e8e4] rounded-[3px] px-3 py-2 text-sm text-[#37352f] focus:outline-none focus:border-[#2383e2] focus:ring-1 focus:ring-[#2383e2]"
                 placeholder={isSignup ? 'At least 6 characters' : 'Your password'}
               />
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-150 mt-2"
+              className="w-full flex items-center justify-center gap-2 bg-[#2383e2] hover:bg-[#1b6abf] disabled:opacity-50 text-white px-4 py-2.5 rounded-[3px] font-medium text-sm mt-2"
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
               {isSignup ? 'Sign Up' : 'Log In'}
@@ -135,7 +144,7 @@ export default function AuthPage({ onAuth }) {
           <div className="mt-4 text-center">
             <button
               onClick={() => { setIsSignup(!isSignup); setError(''); }}
-              className="text-sm text-accent-600 hover:text-accent-700 transition-colors"
+              className="text-sm text-[#2383e2] hover:text-[#1b6abf]"
             >
               {isSignup ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
             </button>

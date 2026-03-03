@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Orbit forward: each image rotates around the center at its radius,
+   then counter-rotates to stay upright. The radius is set inline via
+   translateX in the component's initial transform. The animation
+   overrides the full transform each frame using CSS custom properties
+   isn't needed — instead we use a simpler approach: rotate the
+   parent ring and counter-rotate each child. */
+
+/* We use a different strategy: each OrbitingImage has its startAngle
+   baked into its initial CSS transform. The keyframes just add a full
+   rotation on top. */
+
+@keyframes orbit-forward {
+  from { transform: rotate(var(--start, 0deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * var(--start, 0deg))); }
+  to   { transform: rotate(calc(var(--start, 0deg) + 360deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * (var(--start, 0deg) + 360deg))); }
+}
+
+@keyframes orbit-reverse {
+  from { transform: rotate(var(--start, 0deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * var(--start, 0deg))); }
+  to   { transform: rotate(calc(var(--start, 0deg) - 360deg)) translateX(var(--radius, 0px)) rotate(calc(-1 * (var(--start, 0deg) - 360deg))); }
+}

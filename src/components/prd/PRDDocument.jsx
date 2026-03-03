@@ -77,7 +77,7 @@ export default function PRDDocument({
   const sidebarOpen = sidebarTab !== null;
 
   return (
-    <div className="min-h-screen bg-[#fafbfc]">
+    <div className="min-h-screen bg-white">
       <PRDToolbar
         editMode={editMode}
         onToggleEdit={handleToggleEdit}
@@ -92,7 +92,7 @@ export default function PRDDocument({
       <div className="flex">
         {/* Document area */}
         <div className="flex-1 min-w-0 transition-all duration-300">
-          <div className="max-w-[800px] mx-auto px-8 py-10">
+          <div className="max-w-[800px] mx-auto px-8 py-10 pb-24">
             {editMode ? (
               <PRDEditor value={prd} onChange={setPrd} />
             ) : (
@@ -103,6 +103,20 @@ export default function PRDDocument({
                 containerRef={containerRef}
               />
             )}
+          </div>
+
+          {/* Bottom toolbar */}
+          <div className="sticky bottom-0 bg-white border-t border-[#e9e8e4] z-40">
+            <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-end">
+              <button
+                onClick={onGenerateTickets}
+                disabled={loading}
+                className="flex items-center gap-2 px-6 py-2.5 bg-[#2383e2] text-white rounded-[3px] hover:bg-[#1b6abf] disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <Ticket size={15} />}
+                Generate Tickets
+              </button>
+            </div>
           </div>
         </div>
 
@@ -144,22 +158,6 @@ export default function PRDDocument({
         />
       )}
 
-      {/* Bottom spacer for fixed toolbar */}
-      <div className="h-20" />
-
-      {/* Fixed bottom toolbar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 shadow-elevated">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-end">
-          <button
-            onClick={onGenerateTickets}
-            disabled={loading}
-            className="flex items-center gap-2 px-6 py-2.5 bg-accent-600 text-white rounded-xl hover:bg-accent-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-all duration-150 shadow-soft"
-          >
-            {loading ? <Loader2 size={15} className="animate-spin" /> : <Ticket size={15} />}
-            Generate Tickets
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

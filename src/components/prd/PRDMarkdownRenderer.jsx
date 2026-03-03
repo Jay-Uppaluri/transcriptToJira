@@ -26,8 +26,8 @@ function highlightText(children, resolvedAnchors, onHighlightClick) {
       }
 
       const colorClass = anchor.commentType === 'suggestion'
-        ? 'bg-blue-100 hover:bg-blue-200 border-b-2 border-blue-300'
-        : 'bg-yellow-100 hover:bg-yellow-200 border-b-2 border-yellow-300';
+        ? 'bg-[rgba(45,170,219,0.2)] hover:bg-[rgba(45,170,219,0.35)] border-b-2 border-[rgba(45,170,219,0.5)]'
+        : 'bg-[rgba(255,212,0,0.3)] hover:bg-[rgba(255,212,0,0.45)] border-b-2 border-[rgba(255,212,0,0.6)]';
 
       const statusClass = anchor.status !== 'open'
         ? 'opacity-40 line-through'

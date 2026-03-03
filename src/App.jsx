@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import AuthPage from './components/AuthPage.jsx';
 import PRDList from './components/PRDList.jsx';
-import Header from './components/layout/Header.jsx';
+import TranscriptList from './components/TranscriptList.jsx';
+import Sidebar from './components/layout/Sidebar.jsx';
+import TranscriptView from './components/TranscriptView.jsx';
 import TranscriptModal from './components/modal/TranscriptModal.jsx';
 import PRDDocument from './components/prd/PRDDocument.jsx';
 import TicketView from './components/tickets/TicketView.jsx';
@@ -18,9 +20,14 @@ export default function App() {
   const [token, setToken] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // View: 'dashboard' | 'prd' | 'tickets'
+  // View: 'dashboard' | 'prd' | 'tickets' | 'transcript'
   const [view, setView] = useState('dashboard');
   const [modalOpen, setModalOpen] = useState(false);
+  const [activeTranscript, setActiveTranscript] = useState(null);
+
+  // Sidebar state
+  const [sidebarSection, setSidebarSection] = useState('documents');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Workflow state
   const [transcript, setTranscript] = useState('');
@@ -114,8 +121,23 @@ export default function App() {
 
   function goToDashboard() {
     resetWorkflow();
+    setActiveTranscript(null);
     setView('dashboard');
     setModalOpen(false);
+  }
+
+  function openTranscript(transcript) {
+    setActiveTranscript(transcript);
+    setView('transcript');
+  }
+
+  function handleGeneratePRDFromTranscript(t) {
+    const text = t.lines.map(l => `${l.speaker}: ${l.text}`).join('\n');
+    setTranscript(text);
+    setActiveTranscript(null);
+    setModalOpen(true);
+    setView('dashboard');
+    setSidebarSection('documents');
   }
 
   function handleNewPRD() {
@@ -237,8 +259,8 @@ export default function App() {
   // Loading auth
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-[#fafbfc] flex items-center justify-center">
-        <Loader2 size={24} className="animate-spin text-accent-500" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 size={24} className="animate-spin text-[#787774]" />
       </div>
     );
   }
@@ -247,72 +269,96 @@ export default function App() {
   if (!user) return <AuthPage onAuth={handleAuth} />;
 
   return (
-    <div className="min-h-screen bg-[#fafbfc] text-gray-900">
-      <Header
-        user={user}
-        connection={connection}
-        connectionLoading={connectionLoading}
-        testMode={testMode}
-        onTestModeToggle={() => setTestMode(m => !m)}
-        onDisconnectJira={disconnectJira}
-        onLogout={logout}
-        onGoHome={goToDashboard}
-      />
-
-      {error && (
-        <div className="max-w-5xl mx-auto px-6 mt-4">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-600 text-sm">
-            <AlertCircle size={18} />
-            {error}
-            <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-600 text-xs">Dismiss</button>
-          </div>
-        </div>
-      )}
-
-      {/* Dashboard */}
-      {view === 'dashboard' && (
-        <main className="max-w-5xl mx-auto px-6 py-12">
-          <PRDList token={token} onNewPRD={handleNewPRD} onOpenPRD={openPRD} />
-        </main>
-      )}
-
-      {/* PRD Document (full-page) */}
-      {view === 'prd' && prd && (
-        <PRDDocument
-          prd={prd}
-          setPrd={setPrd}
-          prdId={prdId}
-          savePRDEdits={savePRDEdits}
-          comments={comments}
-          onAddComment={handleAddComment}
-          onAddReply={addReply}
-          onResolveComment={handleResolveComment}
-          onDeleteComment={deleteComment}
-          currentUser={user}
-          token={token}
-          loading={loading}
-          onGenerateTickets={generateTickets}
-          onBack={goToDashboard}
+    <div className="h-screen flex bg-white text-[#37352f]">
+        <Sidebar
+          activeSection={sidebarSection}
+          onSectionChange={(section) => {
+            setSidebarSection(section);
+            if (view !== 'dashboard') {
+              resetWorkflow();
+              setView('dashboard');
+              setModalOpen(false);
+            }
+          }}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(c => !c)}
+          onGoHome={goToDashboard}
+          user={user}
+          testMode={testMode}
+          onTestModeToggle={() => setTestMode(m => !m)}
+          onLogout={logout}
+          connection={connection}
+          connectionLoading={connectionLoading}
+          onDisconnectJira={disconnectJira}
         />
-      )}
 
-      {/* Tickets */}
-      {view === 'tickets' && (
-        <main className="max-w-5xl mx-auto px-6 py-12">
-          <TicketView
-            tickets={tickets}
-            setTickets={setTickets}
-            projectKey={projectKey}
-            connection={connection}
-            submitting={submitting}
-            submitResult={submitResult}
-            submittedSiteUrl={submittedSiteUrl}
-            currentUser={user}
-            onSubmitToJira={submitToJira}
-            onBack={() => setView('prd')}
-          />
-        </main>
-      )}
+        <div className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="max-w-5xl mx-auto px-6 mt-4">
+              <div className="p-4 bg-[#fef2f2] border border-[#e9e8e4] rounded-[3px] flex items-center gap-3 text-[#e03e3e] text-sm">
+                <AlertCircle size={18} />
+                {error}
+                <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-600 text-xs">Dismiss</button>
+              </div>
+            </div>
+          )}
+
+          {/* Dashboard — Documents or Transcripts */}
+          {view === 'dashboard' && (
+            <main className="max-w-5xl mx-auto px-6 py-12">
+              {sidebarSection === 'documents' ? (
+                <PRDList token={token} onNewPRD={handleNewPRD} onOpenPRD={openPRD} />
+              ) : (
+                <TranscriptList onOpenTranscript={openTranscript} />
+              )}
+            </main>
+          )}
+
+          {/* Transcript View (full-page) */}
+          {view === 'transcript' && activeTranscript && (
+            <TranscriptView
+              transcript={activeTranscript}
+              onBack={() => { setActiveTranscript(null); setView('dashboard'); setSidebarSection('transcripts'); }}
+              onGeneratePRD={handleGeneratePRDFromTranscript}
+            />
+          )}
+
+          {/* PRD Document (full-page) */}
+          {view === 'prd' && prd && (
+            <PRDDocument
+              prd={prd}
+              setPrd={setPrd}
+              prdId={prdId}
+              savePRDEdits={savePRDEdits}
+              comments={comments}
+              onAddComment={handleAddComment}
+              onAddReply={addReply}
+              onResolveComment={handleResolveComment}
+              onDeleteComment={deleteComment}
+              currentUser={user}
+              token={token}
+              loading={loading}
+              onGenerateTickets={generateTickets}
+              onBack={goToDashboard}
+            />
+          )}
+
+          {/* Tickets */}
+          {view === 'tickets' && (
+              <TicketView
+                tickets={tickets}
+                setTickets={setTickets}
+                projectKey={projectKey}
+                connection={connection}
+                submitting={submitting}
+                submitResult={submitResult}
+                submittedSiteUrl={submittedSiteUrl}
+                currentUser={user}
+                onSubmitToJira={submitToJira}
+                onBack={() => setView('prd')}
+              />
+          )}
+        </div>
 
       {/* Transcript Modal */}
       <TranscriptModal

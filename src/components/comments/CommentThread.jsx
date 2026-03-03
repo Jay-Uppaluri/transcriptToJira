@@ -14,14 +14,6 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-const JOB_TITLE_COLORS = {
-  Product: 'bg-purple-50 text-purple-600',
-  Engineering: 'bg-blue-50 text-blue-600',
-  'UX Designer': 'bg-pink-50 text-pink-600',
-  QA: 'bg-orange-50 text-orange-600',
-  Admin: 'bg-red-50 text-red-600',
-};
-
 function formatTime(dateStr) {
   const d = new Date(dateStr);
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -41,15 +33,15 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
     <div
       id={`comment-${comment.id}`}
       onClick={() => onSetActive(comment.id)}
-      className={`rounded-xl border p-3 transition-all cursor-pointer ${
+      className={`rounded-[3px] border p-3 cursor-pointer ${
         isActive
-          ? 'border-accent-300 bg-accent-50/30 shadow-sm'
-          : 'border-gray-200 bg-white hover:border-gray-300'
+          ? 'border-[#2383e2] bg-[rgba(45,170,219,0.06)]'
+          : 'border-[#e9e8e4] bg-white hover:bg-[rgba(55,53,47,0.04)]'
       } ${isResolved ? 'opacity-60' : ''}`}
     >
       {/* Selection quote */}
       {comment.selection_text && (
-        <div className="mb-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-2.5 py-1.5 border-l-2 border-gray-300 italic">
+        <div className="mb-2 text-xs text-[#787774] bg-[rgba(55,53,47,0.04)] rounded-[3px] px-2.5 py-1.5 border-l-2 border-[#e9e8e4] italic">
           "{comment.selection_text.length > 100 ? comment.selection_text.slice(0, 100) + '...' : comment.selection_text}"
         </div>
       )}
@@ -60,14 +52,14 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
           {comment.user_name.charAt(0).toUpperCase()}
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="text-xs font-medium text-gray-900 leading-tight">{comment.user_name}</span>
-          <span className="text-[10px] text-gray-400 leading-tight">{comment.user_job_title}</span>
+          <span className="text-xs font-medium text-[#37352f] leading-tight">{comment.user_name}</span>
+          <span className="text-[10px] text-[#9b9a97] leading-tight">{comment.user_job_title}</span>
         </div>
-        <span className="text-[10px] text-gray-400 ml-auto mt-0.5">{formatTime(comment.created_at)}</span>
+        <span className="text-[10px] text-[#9b9a97] ml-auto mt-0.5">{formatTime(comment.created_at)}</span>
       </div>
 
       {/* Comment content */}
-      <p className="text-sm text-gray-700 whitespace-pre-wrap mb-2">{comment.content}</p>
+      <p className="text-sm text-[#37352f] whitespace-pre-wrap mb-2">{comment.content}</p>
 
       {/* Suggestion diff */}
       {isSuggestion && comment.suggested_text && (
@@ -79,25 +71,25 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
       {/* Status badge */}
       {isResolved && (
         <div className="flex items-center gap-1 mb-2">
-          <CheckCircle2 size={11} className="text-green-500" />
-          <span className="text-[10px] text-green-600 font-medium capitalize">{comment.status}</span>
+          <CheckCircle2 size={11} className="text-[#0f7b6c]" />
+          <span className="text-[10px] text-[#0f7b6c] font-medium capitalize">{comment.status}</span>
         </div>
       )}
 
       {/* Actions */}
       {!isResolved && (
-        <div className="flex items-center gap-1.5 pt-1.5 border-t border-gray-100">
+        <div className="flex items-center gap-1.5 pt-1.5 border-t border-[#e9e8e4]">
           {isSuggestion ? (
             <>
               <button
                 onClick={(e) => { e.stopPropagation(); onResolve(comment.id, 'accept'); }}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-green-600 border border-green-200 hover:bg-green-50 rounded-md transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#0f7b6c] hover:bg-[rgba(15,123,108,0.08)] rounded-[3px]"
               >
                 <Check size={14} /> Accept
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onResolve(comment.id, 'reject'); }}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-500 border border-red-200 hover:bg-red-50 rounded-md transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#e03e3e] hover:bg-[rgba(224,62,62,0.08)] rounded-[3px]"
               >
                 <X size={14} /> Reject
               </button>
@@ -105,21 +97,21 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); onResolve(comment.id, 'resolve'); }}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 rounded-md transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#787774] hover:bg-[rgba(55,53,47,0.08)] rounded-[3px]"
             >
               <Check size={14} /> Resolve
             </button>
           )}
           <button
             onClick={(e) => { e.stopPropagation(); setShowReply(!showReply); }}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 rounded-md transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#787774] hover:bg-[rgba(55,53,47,0.08)] rounded-[3px]"
           >
             <Reply size={14} /> Reply
           </button>
           {currentUser && comment.user_id === currentUser.id && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(comment.id); }}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-400 border border-gray-200 hover:text-red-500 hover:border-red-200 hover:bg-red-50 rounded-md transition-colors ml-auto"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#9b9a97] hover:text-[#e03e3e] hover:bg-[rgba(224,62,62,0.08)] rounded-[3px] ml-auto"
             >
               <Trash2 size={14} />
             </button>
@@ -129,7 +121,7 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
 
       {/* Replies */}
       {comment.replies?.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+        <div className="mt-2 pt-2 border-t border-[#e9e8e4] space-y-2">
           {comment.replies.map(reply => (
             <div key={reply.id} className="flex items-start gap-2 pl-2">
               <div className={`w-4 h-4 rounded-full ${getAvatarColor(reply.user_name)} flex items-center justify-center text-white text-[8px] font-semibold shrink-0 mt-0.5`}>
@@ -137,18 +129,18 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-medium text-gray-800">{reply.user_name}</span>
-                  <span className="text-[9px] text-gray-400">{formatTime(reply.created_at)}</span>
+                  <span className="text-[10px] font-medium text-[#37352f]">{reply.user_name}</span>
+                  <span className="text-[9px] text-[#9b9a97]">{formatTime(reply.created_at)}</span>
                   {currentUser && reply.user_id === currentUser.id && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onDelete(reply.id); }}
-                      className="text-gray-300 hover:text-red-500 transition-all ml-auto"
+                      className="text-[#9b9a97] hover:text-[#e03e3e] ml-auto"
                     >
                       <Trash2 size={9} />
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-gray-600 whitespace-pre-wrap">{reply.content}</p>
+                <p className="text-xs text-[#787774] whitespace-pre-wrap">{reply.content}</p>
               </div>
             </div>
           ))}
@@ -157,7 +149,7 @@ export default function CommentThread({ comment, isActive, onSetActive, onReply,
 
       {/* Reply form */}
       {showReply && (
-        <div className="mt-2 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+        <div className="mt-2 pt-2 border-t border-[#e9e8e4]" onClick={e => e.stopPropagation()}>
           <CommentInput
             mode="reply"
             onSubmit={handleReplySubmit}

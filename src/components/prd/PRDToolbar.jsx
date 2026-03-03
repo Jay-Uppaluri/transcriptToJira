@@ -7,11 +7,11 @@ export default function PRDToolbar({
   onBack,
 }) {
   return (
-    <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
+    <div className="sticky top-0 z-30 bg-white border-b border-[#e9e8e4]">
       <div className="flex items-center justify-between px-6 py-2.5 max-w-[1200px] mx-auto">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-[#787774] hover:text-[#37352f]"
         >
           <ArrowLeft size={14} />
           Dashboard
@@ -20,10 +20,10 @@ export default function PRDToolbar({
         <div className="flex items-center gap-1.5">
           <button
             onClick={onToggleEdit}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[3px] ${
               editMode
-                ? 'bg-accent-50 text-accent-700 border border-accent-200'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-transparent'
+                ? 'bg-[rgba(55,53,47,0.08)] text-[#37352f]'
+                : 'text-[#787774] hover:bg-[rgba(55,53,47,0.08)]'
             }`}
           >
             {editMode ? <><Eye size={13} /> Preview</> : <><Pencil size={13} /> Edit</>}
@@ -31,8 +31,8 @@ export default function PRDToolbar({
 
           <button
             onClick={onCopy}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              copied ? 'text-accent-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[3px] ${
+              copied ? 'text-[#2383e2]' : 'text-[#787774] hover:bg-[rgba(55,53,47,0.08)]'
             }`}
           >
             <Copy size={13} />
@@ -41,10 +41,10 @@ export default function PRDToolbar({
 
           <button
             onClick={() => onSetSidebarTab(sidebarTab === 'summary' ? null : 'summary')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[3px] ${
               sidebarTab === 'summary'
-                ? 'bg-accent-50 text-accent-700 border border-accent-200'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-transparent'
+                ? 'bg-[rgba(55,53,47,0.08)] text-[#37352f]'
+                : 'text-[#787774] hover:bg-[rgba(55,53,47,0.08)]'
             }`}
           >
             <Users size={13} />
@@ -53,16 +53,16 @@ export default function PRDToolbar({
 
           <button
             onClick={() => onSetSidebarTab(sidebarTab === 'comments' ? null : 'comments')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[3px] ${
               sidebarTab === 'comments'
-                ? 'bg-accent-50 text-accent-700 border border-accent-200'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-transparent'
+                ? 'bg-[rgba(55,53,47,0.08)] text-[#37352f]'
+                : 'text-[#787774] hover:bg-[rgba(55,53,47,0.08)]'
             }`}
           >
             <MessageSquare size={13} />
             Comments
             {commentCount > 0 && (
-              <span className="bg-accent-100 text-accent-700 text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+              <span className="bg-[rgba(55,53,47,0.06)] text-[#37352f] text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
                 {commentCount}
               </span>
             )}

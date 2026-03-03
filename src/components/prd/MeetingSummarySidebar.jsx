@@ -84,7 +84,7 @@ function AttendeeList({ attendees }) {
         {!showAll && remaining > 0 && (
           <button
             onClick={() => setShowAll(true)}
-            className="text-[11px] text-accent-600 hover:text-accent-700 font-medium"
+            className="text-[11px] text-[#2383e2] hover:text-[#1b6abf] font-medium"
           >
             +{remaining} more
           </button>
@@ -92,7 +92,7 @@ function AttendeeList({ attendees }) {
         {showAll && remaining > 0 && (
           <button
             onClick={() => setShowAll(false)}
-            className="text-[11px] text-gray-400 hover:text-gray-600 font-medium"
+            className="text-[11px] text-[#9b9a97] hover:text-[#37352f] font-medium"
           >
             Show less
           </button>
@@ -103,7 +103,7 @@ function AttendeeList({ attendees }) {
         {displayed.map((a) => (
           <span
             key={a.name}
-            className="inline-flex items-center gap-1 text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+            className="inline-flex items-center gap-1 text-[11px] bg-[rgba(55,53,47,0.06)] text-[#787774] px-2 py-0.5 rounded-[3px]"
           >
             <span className={`w-1.5 h-1.5 rounded-full ${a.color}`} />
             {a.name}
@@ -116,15 +116,15 @@ function AttendeeList({ attendees }) {
 
 export default function MeetingSummarySidebar({ onClose }) {
   return (
-    <div className="h-full bg-white border-l border-gray-200 flex flex-col">
+    <div className="h-full bg-white border-l border-[#e9e8e4] flex flex-col">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-        <Users size={14} className="text-gray-500" />
-        <span className="text-sm font-medium text-gray-900">Meeting Summary</span>
-        <span className="text-[10px] text-gray-400 font-medium">45 min</span>
+      <div className="px-4 py-3 border-b border-[#e9e8e4] flex items-center gap-2">
+        <Users size={14} className="text-[#787774]" />
+        <span className="text-sm font-medium text-[#37352f]">Meeting Summary</span>
+        <span className="text-[10px] text-[#9b9a97] font-medium">45 min</span>
         <button
           onClick={onClose}
-          className="ml-auto p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
+          className="ml-auto p-1 text-[#9b9a97] hover:bg-[rgba(55,53,47,0.08)] rounded-[3px]"
           title="Close summary"
         >
           <X size={14} />
@@ -135,7 +135,7 @@ export default function MeetingSummarySidebar({ onClose }) {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
         {/* Attendees */}
         <section>
-          <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-2 px-1">
+          <h4 className="text-[10px] font-medium text-[#9b9a97] uppercase tracking-wider mb-2 px-1">
             Attendees ({MOCK_ATTENDEES.length})
           </h4>
           <AttendeeList attendees={MOCK_ATTENDEES} />
@@ -145,18 +145,18 @@ export default function MeetingSummarySidebar({ onClose }) {
         <section>
           <div className="flex items-center gap-2 mb-2">
             <Sparkles size={13} className="text-amber-500" />
-            <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+            <h4 className="text-[10px] font-medium text-[#9b9a97] uppercase tracking-wider">
               Summary
             </h4>
           </div>
-          <p className="text-[13px] text-gray-600 leading-relaxed">{MOCK_SUMMARY.summary}</p>
+          <p className="text-[13px] text-[#787774] leading-relaxed">{MOCK_SUMMARY.summary}</p>
         </section>
 
         {/* Stakeholder Perspectives */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <MessageCircle size={13} className="text-blue-500" />
-            <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+            <MessageCircle size={13} className="text-[#787774]" />
+            <h4 className="text-[10px] font-medium text-[#9b9a97] uppercase tracking-wider">
               Stakeholder Perspectives
             </h4>
           </div>
@@ -170,10 +170,10 @@ export default function MeetingSummarySidebar({ onClose }) {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <span className="text-[13px] font-medium text-gray-800">{p.name}</span>
+                    <span className="text-[13px] font-medium text-[#37352f]">{p.name}</span>
                     <span className="text-[10px] text-gray-400">{p.role}</span>
                   </div>
-                  <p className="text-[13px] text-gray-600 leading-relaxed mt-0.5">{p.perspective}</p>
+                  <p className="text-[13px] text-[#787774] leading-relaxed mt-0.5">{p.perspective}</p>
                 </div>
               </div>
             ))}
@@ -184,11 +184,11 @@ export default function MeetingSummarySidebar({ onClose }) {
         <section>
           <div className="flex items-center gap-2 mb-2">
             <Target size={13} className="text-emerald-500" />
-            <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+            <h4 className="text-[10px] font-medium text-[#9b9a97] uppercase tracking-wider">
               PRD Direction
             </h4>
           </div>
-          <p className="text-[13px] text-gray-600 leading-relaxed">{MOCK_SUMMARY.direction}</p>
+          <p className="text-[13px] text-[#787774] leading-relaxed">{MOCK_SUMMARY.direction}</p>
         </section>
       </div>
     </div>

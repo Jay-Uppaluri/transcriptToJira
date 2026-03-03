@@ -6,7 +6,7 @@ export default function SelectionPopover({ position, onComment, onSuggest }) {
 
   return (
     <div
-      className="fixed z-40 flex items-center gap-0.5 bg-gray-900 text-white rounded-lg shadow-lg px-1 py-0.5 select-none no-transition"
+      className="fixed z-40 flex items-center gap-0.5 bg-[#37352f] text-white rounded-[3px] shadow-notion-popup px-1 py-0.5 select-none no-transition"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -15,15 +15,15 @@ export default function SelectionPopover({ position, onComment, onSuggest }) {
     >
       <button
         onMouseDown={(e) => { e.preventDefault(); onComment(); }}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium hover:bg-gray-700 rounded-md transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium hover:bg-[rgba(255,255,255,0.1)] rounded-[3px]"
       >
         <MessageSquare size={12} />
         Comment
       </button>
-      <div className="w-px h-4 bg-gray-700" />
+      <div className="w-px h-4 bg-[rgba(255,255,255,0.2)]" />
       <button
         onMouseDown={(e) => { e.preventDefault(); onSuggest(); }}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium hover:bg-gray-700 rounded-md transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium hover:bg-[rgba(255,255,255,0.1)] rounded-[3px]"
       >
         <PenLine size={12} />
         Suggest Edit

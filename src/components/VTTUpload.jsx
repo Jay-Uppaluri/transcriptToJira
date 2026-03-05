@@ -1,12 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Loader2, CheckCircle, XCircle, ArrowRight, Send, ChevronDown, ChevronUp, Trash2, ExternalLink } from 'lucide-react';
+import { Upload, FileText, Loader2, CheckCircle, XCircle, ArrowRight, Send, ChevronDown, ChevronUp, Trash2, ExternalLink, ArrowLeft } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 export default function VTTUpload({ token, connection }) {
   const [file, setFile] = useState(null);
   const [projectKey, setProjectKey] = useState('KAN');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
+
+  // Multi-step state: 'upload' | 'prd' | 'tickets' | 'submitted'
+  const [step, setStep] = useState('upload');
+  const [transcript, setTranscript] = useState('');
+  const [prd, setPrd] = useState('');
+  const [prdTitle, setPrdTitle] = useState('');
+  const [tickets, setTickets] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
   const [expandedTranscript, setExpandedTranscript] = useState(false);
@@ -28,13 +35,10 @@ export default function VTTUpload({ token, connection }) {
     if (!file) return;
     setLoading(true);
     setError('');
-    setResult(null);
-    setSubmitResult(null);
 
     const formData = new FormData();
     formData.append('vttFile', file);
     formData.append('projectKey', projectKey);
-    formData.append('autoSubmit', 'false');
 
     try {
       const res = await fetch('/api/vtt/upload', {
@@ -45,7 +49,11 @@ export default function VTTUpload({ token, connection }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setResult(data);
+      setTranscript(data.transcript);
+      setPrd(data.prd);
+      setPrdTitle(data.prdTitle || 'Untitled PRD');
+      setTickets(data.tickets || []);
+      setStep('prd');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -54,7 +62,7 @@ export default function VTTUpload({ token, connection }) {
   }
 
   async function submitTickets() {
-    if (!result?.tickets?.length) return;
+    if (!tickets.length) return;
     setSubmitting(true);
     setError('');
 
@@ -63,11 +71,12 @@ export default function VTTUpload({ token, connection }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         credentials: 'include',
-        body: JSON.stringify({ tickets: result.tickets }),
+        body: JSON.stringify({ tickets }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSubmitResult(data);
+      setStep('submitted');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -76,18 +85,19 @@ export default function VTTUpload({ token, connection }) {
   }
 
   function removeTicket(index) {
-    setResult(prev => ({
-      ...prev,
-      tickets: prev.tickets.filter((_, i) => i !== index),
-      actionItems: prev.actionItems.filter((_, i) => i !== index),
-    }));
+    setTickets(prev => prev.filter((_, i) => i !== index));
   }
 
   function reset() {
     setFile(null);
-    setResult(null);
+    setTranscript('');
+    setPrd('');
+    setPrdTitle('');
+    setTickets([]);
     setSubmitResult(null);
     setError('');
+    setStep('upload');
+    setExpandedTranscript(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -99,15 +109,45 @@ export default function VTTUpload({ token, connection }) {
     Lowest: 'bg-gray-100 text-gray-600',
   };
 
+  // Step indicator
+  const steps = [
+    { key: 'upload', label: 'Upload' },
+    { key: 'prd', label: 'PRD' },
+    { key: 'tickets', label: 'Tickets' },
+    { key: 'submitted', label: 'Done' },
+  ];
+  const currentStepIndex = steps.findIndex(s => s.key === step);
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#37352f] mb-2">Upload Meeting Transcript</h1>
-        <p className="text-[#787774] text-base">Upload a .vtt transcript file to automatically extract action items and create Jira tickets.</p>
+        <p className="text-[#787774] text-base">Upload a .vtt file → Generate PRD → Create Jira tickets.</p>
       </div>
 
-      {/* Upload area */}
-      {!result && !submitResult && (
+      {/* Step indicator */}
+      <div className="flex items-center gap-2 mb-8">
+        {steps.map((s, i) => (
+          <React.Fragment key={s.key}>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+              ${i < currentStepIndex ? 'bg-green-100 text-green-700' : i === currentStepIndex ? 'bg-[#2383e2] text-white' : 'bg-[#f1f1ef] text-[#787774]'}`}>
+              {i < currentStepIndex ? <CheckCircle size={14} /> : <span className="w-5 h-5 flex items-center justify-center rounded-full bg-white/20 text-xs">{i + 1}</span>}
+              {s.label}
+            </div>
+            {i < steps.length - 1 && <div className={`flex-1 h-px ${i < currentStepIndex ? 'bg-green-300' : 'bg-[#e9e8e4]'}`} />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm flex items-center gap-2">
+          <XCircle size={16} /> {error}
+          <button onClick={() => setError('')} className="ml-auto text-xs hover:underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* Step 1: Upload */}
+      {step === 'upload' && (
         <div className="space-y-6">
           <div
             onDragOver={e => e.preventDefault()}
@@ -147,21 +187,14 @@ export default function VTTUpload({ token, connection }) {
               disabled={!file || loading}
               className="mt-6 px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {loading ? <><Loader2 size={16} className="animate-spin" /> Analyzing...</> : <><ArrowRight size={16} /> Extract Action Items</>}
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Analyzing transcript...</> : <><ArrowRight size={16} /> Generate PRD & Tickets</>}
             </button>
           </div>
         </div>
       )}
 
-      {error && (
-        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm flex items-center gap-2">
-          <XCircle size={16} /> {error}
-          <button onClick={() => setError('')} className="ml-auto text-xs hover:underline">Dismiss</button>
-        </div>
-      )}
-
-      {/* Results - Action Items & Tickets */}
-      {result && !submitResult && (
+      {/* Step 2: PRD Review */}
+      {step === 'prd' && (
         <div className="space-y-6">
           {/* Transcript preview */}
           <div className="border border-[#e9e8e4] rounded-lg overflow-hidden">
@@ -169,55 +202,87 @@ export default function VTTUpload({ token, connection }) {
               onClick={() => setExpandedTranscript(!expandedTranscript)}
               className="w-full px-4 py-3 bg-[#fbfbfa] flex items-center justify-between text-sm font-medium text-[#37352f] hover:bg-[#f1f1ef]"
             >
-              <span>📝 Parsed Transcript ({result.transcript.split('\n').length} lines)</span>
+              <span>📝 Parsed Transcript ({transcript.split('\n').length} lines)</span>
               {expandedTranscript ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
             {expandedTranscript && (
-              <pre className="p-4 text-xs text-[#787774] max-h-64 overflow-y-auto whitespace-pre-wrap">{result.transcript}</pre>
+              <pre className="p-4 text-xs text-[#787774] max-h-64 overflow-y-auto whitespace-pre-wrap">{transcript}</pre>
             )}
           </div>
 
-          {/* Action Items */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-[#37352f]">
-                Extracted Action Items ({result.tickets.length})
-              </h2>
-              <div className="flex gap-2">
-                <button onClick={reset} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef]">
-                  Start Over
-                </button>
-                <button
-                  onClick={submitTickets}
-                  disabled={submitting || !result.tickets.length}
-                  className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 flex items-center gap-2"
-                >
-                  {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {result.tickets.length} Jira Tickets</>}
-                </button>
+          {/* PRD Content */}
+          <div className="border border-[#e9e8e4] rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-[#fbfbfa] border-b border-[#e9e8e4] flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-[#37352f]">{prdTitle}</h2>
+                <p className="text-sm text-[#787774] mt-0.5">Generated PRD — review before proceeding to tickets</p>
               </div>
             </div>
+            <div className="p-6 prose prose-sm max-w-none prose-headings:text-[#37352f] prose-p:text-[#37352f] prose-li:text-[#37352f] prose-strong:text-[#37352f] max-h-[500px] overflow-y-auto">
+              <ReactMarkdown>{prd}</ReactMarkdown>
+            </div>
+          </div>
 
-            <div className="space-y-3">
-              {result.actionItems.map((item, i) => (
+          {/* Actions */}
+          <div className="flex items-center justify-between">
+            <button onClick={reset} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef] flex items-center gap-2">
+              <ArrowLeft size={16} /> Start Over
+            </button>
+            <button
+              onClick={() => setStep('tickets')}
+              className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] flex items-center gap-2"
+            >
+              Review {tickets.length} Tickets <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Tickets Review */}
+      {step === 'tickets' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-[#37352f]">
+              Jira Tickets ({tickets.length})
+            </h2>
+            <div className="flex gap-2">
+              <button onClick={() => setStep('prd')} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef] flex items-center gap-2">
+                <ArrowLeft size={16} /> Back to PRD
+              </button>
+              <button
+                onClick={submitTickets}
+                disabled={submitting || !tickets.length}
+                className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 flex items-center gap-2"
+              >
+                {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {tickets.length} Tickets</>}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {tickets.map((ticket, i) => {
+              const f = ticket.fields || {};
+              const desc = f.description?.content?.[0]?.content?.[0]?.text || '';
+              const priority = f.priority?.name || 'Medium';
+              const issueType = f.issuetype?.name || 'Task';
+              const labels = f.labels || [];
+              return (
                 <div key={i} className="border border-[#e9e8e4] rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityColors[item.priority] || priorityColors.Medium}`}>
-                          {item.priority}
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityColors[priority] || priorityColors.Medium}`}>
+                          {priority}
                         </span>
                         <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
-                          {item.type || 'Task'}
+                          {issueType}
                         </span>
-                        {item.assignee && item.assignee !== 'Unassigned' && (
-                          <span className="text-xs text-[#787774]">→ {item.assignee}</span>
-                        )}
                       </div>
-                      <h3 className="font-medium text-[#37352f]">{item.summary}</h3>
-                      <p className="text-sm text-[#787774] mt-1">{item.description}</p>
-                      {item.labels?.length > 0 && (
-                        <div className="flex gap-1 mt-2">
-                          {item.labels.map((label, j) => (
+                      <h3 className="font-medium text-[#37352f]">{f.summary}</h3>
+                      <p className="text-sm text-[#787774] mt-1 line-clamp-2">{desc}</p>
+                      {labels.length > 0 && (
+                        <div className="flex gap-1 mt-2 flex-wrap">
+                          {labels.map((label, j) => (
                             <span key={j} className="px-2 py-0.5 bg-[#f1f1ef] text-[#787774] rounded text-xs">{label}</span>
                           ))}
                         </div>
@@ -228,14 +293,14 @@ export default function VTTUpload({ token, connection }) {
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Submit Results */}
-      {submitResult && (
+      {/* Step 4: Submission Results */}
+      {step === 'submitted' && submitResult && (
         <div className="space-y-6">
           <div className={`p-6 rounded-lg border ${submitResult.failed === 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
             <div className="flex items-center gap-3 mb-2">
@@ -257,7 +322,7 @@ export default function VTTUpload({ token, connection }) {
                   <span className="text-sm font-medium">{r.summary}</span>
                   {r.success && r.data?.key && (
                     <a
-                      href={`${submitResult.siteUrl?.replace(/\/$/, '')}/browse/${r.data.key}`}
+                      href={`${(submitResult.siteUrl || '').replace(/\/$/, '')}/browse/${r.data.key}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[#2383e2] text-sm flex items-center gap-1 hover:underline"

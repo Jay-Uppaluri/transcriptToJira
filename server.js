@@ -615,116 +615,103 @@ app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (
 
     const projectKey = req.body.projectKey || process.env.JIRA_PROJECT_KEY || 'KAN';
 
-    // Step 1: Extract action items using OpenAI
-    const extraction = await getOpenAI().chat.completions.create({
+    // Step 1: Generate PRD from transcript
+    const prdCompletion = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a senior product manager. Given a Microsoft Teams meeting transcript, extract and produce a detailed Product Requirements Document (PRD).
+
+Structure the PRD with these sections:
+1. **Title** — A concise product/feature name
+2. **Overview** — What is being built and why (2-3 paragraphs)
+3. **Problem Statement** — The pain points discussed
+4. **Goals & Success Metrics** — Measurable outcomes
+5. **User Stories** — In "As a [user], I want [action] so that [benefit]" format
+6. **Functional Requirements** — Detailed, numbered list
+7. **Non-Functional Requirements** — Performance, security, scalability, etc.
+8. **Acceptance Criteria** — Testable conditions for each major feature
+9. **Out of Scope** — What was explicitly excluded
+10. **Open Questions** — Unresolved items from the discussion
+11. **Dependencies** — External teams, systems, or blockers
+12. **Timeline & Milestones** — If discussed
+
+Be thorough. Extract every detail from the transcript. If something is ambiguous, note it in Open Questions.`
+        },
+        { role: 'user', content: `Here is the Teams meeting transcript:\n\n${transcript}` }
+      ]
+    });
+
+    const prdContent = prdCompletion.choices[0].message.content;
+    const titleMatch = prdContent.match(/^#\s+(?:\*\*)?(.+?)(?:\*\*)?$/m);
+    const title = titleMatch ? titleMatch[1].replace(/\*\*/g, '').trim() : 'Untitled PRD';
+
+    // Save PRD to database
+    const prdResult = db.prepare(
+      'INSERT INTO prds (title, transcript, content, project_key, created_by) VALUES (?, ?, ?, ?, ?)'
+    ).run(title, transcript, prdContent, projectKey, req.user.id);
+
+    // Step 2: Generate Jira tickets from PRD
+    const ticketCompletion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.2,
       messages: [
         {
           role: 'system',
-          content: `You are a project manager analyzing a meeting transcript. Extract all action items, tasks, and deliverables discussed.
+          content: `You are a senior engineering lead. Given a PRD, break it down into Jira tickets.
 
-For each action item, provide:
-- summary: A concise ticket title
-- description: Detailed description of what needs to be done
-- assignee: Who it's assigned to (use the speaker's name if mentioned, or "Unassigned")
-- priority: "Highest" | "High" | "Medium" | "Low" | "Lowest"
-- type: "Story" | "Task" | "Bug" | "Epic"
-- labels: relevant labels as an array
+Return a JSON array of tickets. Each ticket MUST follow the exact Jira REST API format for POST /rest/api/3/issue:
 
-Return a JSON array of action items. Be thorough — capture every task, decision, and follow-up mentioned.
-Return ONLY valid JSON. No markdown, no explanation.`
+{
+  "fields": {
+    "project": { "key": "${projectKey}" },
+    "summary": "Ticket title",
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "Description text here" }]
+        }
+      ]
+    },
+    "issuetype": { "name": "Story" | "Task" | "Bug" | "Epic" },
+    "priority": { "name": "Highest" | "High" | "Medium" | "Low" | "Lowest" },
+    "labels": ["label1", "label2"],
+    "components": [{ "name": "component-name" }]
+  }
+}
+
+Guidelines:
+- Create an Epic for the overall feature
+- Break into Stories for user-facing functionality
+- Create Tasks for technical/infrastructure work
+- Include acceptance criteria in each ticket description using Jira ADF (Atlassian Document Format)
+- Use bullet lists in ADF format for acceptance criteria
+- Set appropriate priority levels
+- Add relevant labels
+- Reference the Epic in story descriptions
+
+Return ONLY valid JSON — an array of ticket objects. No markdown, no explanation.`
         },
-        { role: 'user', content: `Here is the meeting transcript:\n\n${transcript}` }
+        { role: 'user', content: `Here is the PRD:\n\n${prdContent}` }
       ]
     });
 
-    let actionItemsRaw = extraction.choices[0].message.content;
-    actionItemsRaw = actionItemsRaw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
-    const actionItems = JSON.parse(actionItemsRaw);
-
-    // Step 2: Convert action items to Jira ticket format
-    const tickets = actionItems.map(item => ({
-      fields: {
-        project: { key: projectKey },
-        summary: item.summary,
-        description: {
-          type: 'doc',
-          version: 1,
-          content: [
-            {
-              type: 'paragraph',
-              content: [{ type: 'text', text: item.description }]
-            },
-            ...(item.assignee && item.assignee !== 'Unassigned' ? [{
-              type: 'paragraph',
-              content: [{ type: 'text', text: `Assignee (from meeting): ${item.assignee}`, marks: [{ type: 'em' }] }]
-            }] : [])
-          ]
-        },
-        issuetype: { name: item.type || 'Task' },
-        priority: { name: item.priority || 'Medium' },
-        labels: item.labels || ['meeting-action-item']
-      }
-    }));
-
-    // Step 3: Optionally auto-submit to Jira
-    const autoSubmit = req.body.autoSubmit === 'true' || req.body.autoSubmit === true;
-
-    if (!autoSubmit) {
-      return res.json({ transcript, actionItems, tickets, submitted: false });
-    }
-
-    // Submit to Jira (reuse same logic as /api/submit-to-jira)
-    let authHeader, baseUrl, siteUrl;
-    try {
-      const tokenInfo = await getValidAccessToken(req.sessionId);
-      if (tokenInfo) {
-        authHeader = `Bearer ${tokenInfo.accessToken}`;
-        baseUrl = `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`;
-        siteUrl = tokenInfo.siteUrl;
-      }
-    } catch (err) {
-      console.error('OAuth token error, falling back to env vars:', err.message);
-    }
-
-    if (!authHeader) {
-      const jiraBaseUrl = process.env.JIRA_BASE_URL;
-      const jiraEmail = process.env.JIRA_USER_EMAIL;
-      const jiraApiToken = process.env.JIRA_API_TOKEN;
-      if (!jiraBaseUrl || !jiraEmail || !jiraApiToken) {
-        return res.status(401).json({ error: 'Not connected to Jira' });
-      }
-      authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`;
-      baseUrl = jiraBaseUrl;
-      siteUrl = jiraBaseUrl;
-    }
-
-    const results = [];
-    for (const ticket of tickets) {
-      try {
-        const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
-          method: 'POST',
-          headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(ticket),
-        });
-        const data = await response.json();
-        results.push({ success: response.ok, status: response.status, data, summary: ticket.fields.summary });
-      } catch (err) {
-        results.push({ success: false, error: err.message, summary: ticket.fields.summary });
-      }
-    }
+    let ticketContent = ticketCompletion.choices[0].message.content;
+    ticketContent = ticketContent.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+    const tickets = JSON.parse(ticketContent);
 
     res.json({
       transcript,
-      actionItems,
+      prd: prdContent,
+      prdId: prdResult.lastInsertRowid,
+      prdTitle: title,
       tickets,
-      submitted: true,
-      created: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
-      total: tickets.length,
-      results,
-      siteUrl,
+      submitted: false,
     });
   } catch (err) {
     console.error('VTT upload error:', err);

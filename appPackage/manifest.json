@@ -2,29 +2,29 @@
     "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.24/MicrosoftTeams.schema.json",
     "manifestVersion": "1.24",
     "version": "1.0.0",
-    "id": "${{TEAMS_APP_ID}}",
+    "id": "2075b241-0c2e-4233-a91f-29f5951c38e8",
     "developer": {
-        "name": "My App, Inc.",
-        "websiteUrl": "https://www.example.com",
-        "privacyUrl": "https://www.example.com/privacy",
-        "termsOfUseUrl": "https://www.example.com/termofuse"
+        "name": "Cortex",
+        "websiteUrl": "https://cortex-prd-app.azurewebsites.net",
+        "privacyUrl": "https://cortex-prd-app.azurewebsites.net/privacy",
+        "termsOfUseUrl": "https://cortex-prd-app.azurewebsites.net/terms"
     },
     "icons": {
         "color": "color.png",
         "outline": "outline.png"
     },
     "name": {
-        "short": "TeamsBot${{APP_NAME_SUFFIX}}",
-        "full": "full name for TeamsBot"
+        "short": "Cortex",
+        "full": "Cortex — Transcript to PRD & Jira"
     },
     "description": {
-        "short": "short description for TeamsBot",
-        "full": "full description for TeamsBot"
+        "short": "Turn meeting transcripts into PRDs and Jira tickets",
+        "full": "Cortex turns meeting transcripts into structured PRDs (Product Requirements Documents) and Jira tickets using AI. Paste a transcript or provide a meeting URL, get an editable PRD, then generate and submit Jira tickets."
     },
     "accentColor": "#FFFFFF",
     "bots": [
         {
-            "botId": "${{BOT_ID}}",
+            "botId": "2075b241-0c2e-4233-a91f-29f5951c38e8",
             "scopes": [
                 "team",
                 "groupChat",
@@ -42,7 +42,11 @@
                     "commands": [
                         {
                             "title": "/generate-prd",
-                            "description": "Generate a PRD from a Teams meeting transcript. Usage: /generate-prd <meeting-join-url>"
+                            "description": "Generate a PRD from a Teams meeting URL. Usage: /generate-prd <meeting-join-url>"
+                        },
+                        {
+                            "title": "/prd-from-text",
+                            "description": "Generate a PRD from pasted transcript text. Usage: /prd-from-text <transcript>"
                         },
                         {
                             "title": "How can you help me?",
@@ -62,7 +66,7 @@
     ],
     "validDomains": [],
     "webApplicationInfo": {
-        "id": "${{BOT_ID}}",
-        "resource": "api://botid-${{BOT_ID}}"
+        "id": "2075b241-0c2e-4233-a91f-29f5951c38e8",
+        "resource": "api://botid-2075b241-0c2e-4233-a91f-29f5951c38e8"
     }
 }

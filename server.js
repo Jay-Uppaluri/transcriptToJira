@@ -560,6 +560,64 @@ app.post('/api/vtt/submit-tickets', authenticateToken, async (req, res) => {
   res.json(result);
 });
 
+// ==================== Teams Bot Integration ====================
+// Mount the Teams bot on this same Express server so Azure App Service
+// can serve both the web UI and the bot on a single port.
+
+let teamsBot = null;
+try {
+  teamsBot = require('./bot/src/app/app.js');
+  console.log('Teams bot module loaded');
+} catch (err) {
+  console.warn('Teams bot module not loaded (non-fatal):', err.message);
+}
+
+if (teamsBot && teamsBot.adapter) {
+  // If the bot exposes an adapter, mount it directly
+  app.post('/api/messages', (req, res) => {
+    teamsBot.adapter.process(req, res, teamsBot);
+  });
+  console.log('Teams bot mounted at /api/messages (adapter mode)');
+} else if (teamsBot) {
+  // The @microsoft/teams.apps App creates its own HTTP server.
+  // We run it on an internal port and proxy /api/messages to it.
+  const BOT_INTERNAL_PORT = 3978;
+
+  // Proxy /api/messages to the internal bot server
+  app.post('/api/messages', async (req, res) => {
+    try {
+      const proxyRes = await fetch(`http://127.0.0.1:${BOT_INTERNAL_PORT}/api/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...Object.fromEntries(
+            Object.entries(req.headers).filter(([k]) =>
+              k.startsWith('authorization') || k === 'ms-cv' || k.startsWith('x-')
+            )
+          ),
+        },
+        body: JSON.stringify(req.body),
+      });
+      const data = await proxyRes.text();
+      res.status(proxyRes.status);
+      for (const [key, value] of proxyRes.headers.entries()) {
+        res.setHeader(key, value);
+      }
+      res.send(data);
+    } catch (err) {
+      console.error('Bot proxy error:', err.message);
+      res.status(502).json({ error: 'Bot unavailable' });
+    }
+  });
+
+  // Start the bot on the internal port
+  teamsBot.start(BOT_INTERNAL_PORT).then(() => {
+    console.log(`Teams bot running on internal port ${BOT_INTERNAL_PORT}, proxied at /api/messages`);
+  }).catch(err => {
+    console.error('Failed to start Teams bot:', err);
+  });
+}
+
 // Serve static frontend in production
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 app.use(express.static(path.join(__dirname, 'dist')));

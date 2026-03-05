@@ -1,4 +1,4 @@
-const { generatePRD } = require('../../shared/prdService.cjs');
+const { generatePRD } = require('../../../shared/prdService.cjs');
 const config = require('../config');
 
 /**

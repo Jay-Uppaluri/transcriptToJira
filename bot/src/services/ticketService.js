@@ -1,4 +1,4 @@
-const { generateTickets, submitToJira, buildJiraAuthFromEnv } = require('../../shared/ticketService.cjs');
+const { generateTickets, submitToJira, buildJiraAuthFromEnv } = require('../../../shared/ticketService.cjs');
 const config = require('../config');
 
 /**

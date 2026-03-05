@@ -1,30 +1,12 @@
-const OpenAI = require('openai');
-const fs = require('fs');
-const path = require('path');
+const { generatePRD } = require('../../shared/prdService.cjs');
 const config = require('../config');
 
-const openai = new OpenAI({ apiKey: config.openAIKey });
-
-const prdPrompt = fs.readFileSync(
-  path.join(__dirname, '../prompts/prdPrompt.txt'),
-  'utf-8'
-).trim();
-
 /**
- * Generate a PRD from a meeting transcript using GPT-4o.
- * Returns { prd: string }
+ * Generate a PRD from a meeting transcript.
+ * Delegates to shared service.
  */
-async function generatePRD(transcript) {
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    temperature: 0.3,
-    messages: [
-      { role: 'system', content: prdPrompt },
-      { role: 'user', content: `Here is the Teams meeting transcript:\n\n${transcript}` },
-    ],
-  });
-
-  return { prd: completion.choices[0].message.content };
+async function generatePRDFromTranscript(transcript) {
+  return generatePRD(transcript, config.openAIKey);
 }
 
-module.exports = { generatePRD };
+module.exports = { generatePRD: generatePRDFromTranscript };

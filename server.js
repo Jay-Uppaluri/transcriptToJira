@@ -7,25 +7,21 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
-import OpenAI from 'openai';
+import { createRequire } from 'module';
 import db, { createSession, getSession, saveJiraConnection, getJiraConnection, deleteJiraConnection } from './server/db.js';
 import { getAuthorizationUrl, exchangeCodeForTokens, getAccessibleResources, getValidAccessToken } from './server/jiraAuth.js';
 import { authenticateToken, signToken } from './middleware/auth.js';
 import { TEST_PRD, getTestTickets } from './server/testData.js';
 
+// Shared services (CJS — used by both web app and Teams bot)
+const require = createRequire(import.meta.url);
+const { generatePRD: sharedGeneratePRD } = require('./shared/prdService.cjs');
+const { generateTickets: sharedGenerateTickets, submitToJira: sharedSubmitToJira, buildJiraAuthFromEnv } = require('./shared/ticketService.cjs');
+
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: '5mb' }));
-
-let _openai;
-function getOpenAI() {
-  if (!_openai) {
-    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
-    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return _openai;
-}
 
 const COOKIE_NAME = 'session_id';
 const COOKIE_OPTS = { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 60 * 60 * 1000 };
@@ -400,39 +396,7 @@ app.post('/api/generate-prd', authenticateToken, async (req, res) => {
       return res.json({ prd: prdContent, prdId: result.lastInsertRowid, title });
     }
 
-    const completion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.3,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a senior product manager. Given a Microsoft Teams meeting transcript, extract and produce a detailed Product Requirements Document (PRD).
-
-Structure the PRD with these sections:
-1. **Title** — A concise product/feature name
-2. **Overview** — What is being built and why (2-3 paragraphs)
-3. **Problem Statement** — The pain points discussed
-4. **Goals & Success Metrics** — Measurable outcomes
-5. **User Stories** — In "As a [user], I want [action] so that [benefit]" format
-6. **Functional Requirements** — Detailed, numbered list
-7. **Non-Functional Requirements** — Performance, security, scalability, etc.
-8. **Acceptance Criteria** — Testable conditions for each major feature
-9. **Out of Scope** — What was explicitly excluded
-10. **Open Questions** — Unresolved items from the discussion
-11. **Dependencies** — External teams, systems, or blockers
-12. **Timeline & Milestones** — If discussed
-
-Be thorough. Extract every detail from the transcript. If something is ambiguous, note it in Open Questions.`
-        },
-        { role: 'user', content: `Here is the Teams meeting transcript:\n\n${transcript}` }
-      ]
-    });
-
-    const prdContent = completion.choices[0].message.content;
-
-    // Extract title from PRD (first heading or first line)
-    const titleMatch = prdContent.match(/^#\s+(?:\*\*)?(.+?)(?:\*\*)?$/m);
-    const title = titleMatch ? titleMatch[1].replace(/\*\*/g, '').trim() : 'Untitled PRD';
+    const { prd: prdContent, title } = await sharedGeneratePRD(transcript, process.env.OPENAI_API_KEY);
 
     // Auto-save PRD to database
     const result = db.prepare(
@@ -456,56 +420,7 @@ app.post('/api/generate-tickets', authenticateToken, async (req, res) => {
       return res.json({ tickets: getTestTickets(projectKey) });
     }
 
-    const completion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a senior engineering lead. Given a PRD, break it down into Jira tickets.
-
-Return a JSON array of tickets. Each ticket MUST follow the exact Jira REST API format for POST /rest/api/3/issue:
-
-{
-  "fields": {
-    "project": { "key": "${projectKey || 'PROJ'}" },
-    "summary": "Ticket title",
-    "description": {
-      "type": "doc",
-      "version": 1,
-      "content": [
-        {
-          "type": "paragraph",
-          "content": [{ "type": "text", "text": "Description text here" }]
-        }
-      ]
-    },
-    "issuetype": { "name": "Story" | "Task" | "Bug" | "Epic" },
-    "priority": { "name": "Highest" | "High" | "Medium" | "Low" | "Lowest" },
-    "labels": ["label1", "label2"],
-    "components": [{ "name": "component-name" }]
-  }
-}
-
-Guidelines:
-- Create an Epic for the overall feature
-- Break into Stories for user-facing functionality
-- Create Tasks for technical/infrastructure work
-- Include acceptance criteria in each ticket description using Jira ADF (Atlassian Document Format)
-- Use bullet lists in ADF format for acceptance criteria
-- Set appropriate priority levels
-- Add relevant labels
-- Reference the Epic in story descriptions
-
-Return ONLY valid JSON — an array of ticket objects. No markdown, no explanation.`
-        },
-        { role: 'user', content: `Here is the PRD:\n\n${prd}` }
-      ]
-    });
-
-    let content = completion.choices[0].message.content;
-    content = content.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
-    const tickets = JSON.parse(content);
+    const { tickets } = await sharedGenerateTickets(prd, projectKey || 'KAN', process.env.OPENAI_API_KEY);
     res.json({ tickets });
   } catch (err) {
     console.error('Ticket generation error:', err);
@@ -520,70 +435,31 @@ app.post('/api/submit-to-jira', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'No tickets provided' });
   }
 
-  // Try OAuth first
-  let authHeader, baseUrl, siteUrl;
+  // Build auth config — try OAuth first, fall back to env vars
+  let auth;
   try {
     const tokenInfo = await getValidAccessToken(req.sessionId);
     if (tokenInfo) {
-      authHeader = `Bearer ${tokenInfo.accessToken}`;
-      baseUrl = `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`;
-      siteUrl = tokenInfo.siteUrl;
+      auth = {
+        authHeader: `Bearer ${tokenInfo.accessToken}`,
+        baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
+        siteUrl: tokenInfo.siteUrl,
+      };
     }
   } catch (err) {
     console.error('OAuth token error, falling back to env vars:', err.message);
   }
 
-  // Fall back to legacy env-var auth
-  if (!authHeader) {
-    const jiraBaseUrl = process.env.JIRA_BASE_URL;
-    const jiraEmail = process.env.JIRA_USER_EMAIL;
-    const jiraApiToken = process.env.JIRA_API_TOKEN;
-
-    if (!jiraBaseUrl || !jiraEmail || !jiraApiToken) {
+  if (!auth) {
+    try {
+      auth = buildJiraAuthFromEnv();
+    } catch (err) {
       return res.status(401).json({ error: 'Not connected to Jira. Please connect your account first.' });
     }
-
-    authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`;
-    baseUrl = jiraBaseUrl;
-    siteUrl = jiraBaseUrl;
   }
 
-  const results = [];
-
-  for (const ticket of tickets) {
-    try {
-      const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(ticket),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        results.push({ success: true, status: response.status, data, summary: ticket.fields?.summary });
-      } else {
-        const errorMessages = [];
-        if (data.errorMessages?.length) errorMessages.push(...data.errorMessages);
-        if (data.errors) {
-          for (const [field, msg] of Object.entries(data.errors)) {
-            errorMessages.push(`${field}: ${msg}`);
-          }
-        }
-        if (data.message) errorMessages.push(data.message);
-        const errorDetail = errorMessages.length ? errorMessages.join('; ') : `HTTP ${response.status}`;
-        results.push({ success: false, status: response.status, error: errorDetail, data, summary: ticket.fields?.summary });
-      }
-    } catch (err) {
-      results.push({ success: false, error: err.message });
-    }
-  }
-
-  const created = results.filter(r => r.success).length;
-  const failed = results.filter(r => !r.success).length;
-  res.json({ created, failed, total: tickets.length, results, siteUrl });
+  const result = await sharedSubmitToJira(tickets, auth);
+  res.json(result);
 });
 
 // ==================== VTT Upload & Action Item Extraction ====================
@@ -627,96 +503,18 @@ app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (
     if (!transcript.trim()) return res.status(400).json({ error: 'Could not parse any content from VTT file' });
 
     const projectKey = req.body.projectKey || process.env.JIRA_PROJECT_KEY || 'KAN';
+    const apiKey = process.env.OPENAI_API_KEY;
 
-    // Step 1: Generate PRD from transcript
-    const prdCompletion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.3,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a senior product manager. Given a Microsoft Teams meeting transcript, extract and produce a detailed Product Requirements Document (PRD).
-
-Structure the PRD with these sections:
-1. **Title** — A concise product/feature name
-2. **Overview** — What is being built and why (2-3 paragraphs)
-3. **Problem Statement** — The pain points discussed
-4. **Goals & Success Metrics** — Measurable outcomes
-5. **User Stories** — In "As a [user], I want [action] so that [benefit]" format
-6. **Functional Requirements** — Detailed, numbered list
-7. **Non-Functional Requirements** — Performance, security, scalability, etc.
-8. **Acceptance Criteria** — Testable conditions for each major feature
-9. **Out of Scope** — What was explicitly excluded
-10. **Open Questions** — Unresolved items from the discussion
-11. **Dependencies** — External teams, systems, or blockers
-12. **Timeline & Milestones** — If discussed
-
-Be thorough. Extract every detail from the transcript. If something is ambiguous, note it in Open Questions.`
-        },
-        { role: 'user', content: `Here is the Teams meeting transcript:\n\n${transcript}` }
-      ]
-    });
-
-    const prdContent = prdCompletion.choices[0].message.content;
-    const titleMatch = prdContent.match(/^#\s+(?:\*\*)?(.+?)(?:\*\*)?$/m);
-    const title = titleMatch ? titleMatch[1].replace(/\*\*/g, '').trim() : 'Untitled PRD';
+    // Step 1: Generate PRD from transcript (shared service)
+    const { prd: prdContent, title } = await sharedGeneratePRD(transcript, apiKey);
 
     // Save PRD to database
     const prdResult = db.prepare(
       'INSERT INTO prds (title, transcript, content, project_key, created_by) VALUES (?, ?, ?, ?, ?)'
     ).run(title, transcript, prdContent, projectKey, req.user.id);
 
-    // Step 2: Generate Jira tickets from PRD
-    const ticketCompletion = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a senior engineering lead. Given a PRD, break it down into Jira tickets.
-
-Return a JSON array of tickets. Each ticket MUST follow the exact Jira REST API format for POST /rest/api/3/issue:
-
-{
-  "fields": {
-    "project": { "key": "${projectKey}" },
-    "summary": "Ticket title",
-    "description": {
-      "type": "doc",
-      "version": 1,
-      "content": [
-        {
-          "type": "paragraph",
-          "content": [{ "type": "text", "text": "Description text here" }]
-        }
-      ]
-    },
-    "issuetype": { "name": "Story" | "Task" | "Bug" | "Epic" },
-    "priority": { "name": "Highest" | "High" | "Medium" | "Low" | "Lowest" },
-    "labels": ["label1", "label2"],
-    "components": [{ "name": "component-name" }]
-  }
-}
-
-Guidelines:
-- Create an Epic for the overall feature
-- Break into Stories for user-facing functionality
-- Create Tasks for technical/infrastructure work
-- Include acceptance criteria in each ticket description using Jira ADF (Atlassian Document Format)
-- Use bullet lists in ADF format for acceptance criteria
-- Set appropriate priority levels
-- Add relevant labels
-- Reference the Epic in story descriptions
-
-Return ONLY valid JSON — an array of ticket objects. No markdown, no explanation.`
-        },
-        { role: 'user', content: `Here is the PRD:\n\n${prdContent}` }
-      ]
-    });
-
-    let ticketContent = ticketCompletion.choices[0].message.content;
-    ticketContent = ticketContent.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
-    const tickets = JSON.parse(ticketContent);
+    // Step 2: Generate Jira tickets from PRD (shared service)
+    const { tickets } = await sharedGenerateTickets(prdContent, projectKey, apiKey);
 
     res.json({
       transcript,
@@ -737,58 +535,29 @@ app.post('/api/vtt/submit-tickets', authenticateToken, async (req, res) => {
   const { tickets } = req.body;
   if (!tickets || !tickets.length) return res.status(400).json({ error: 'No tickets provided' });
 
-  let authHeader, baseUrl, siteUrl;
+  // Build auth config — try OAuth first, fall back to env vars
+  let auth;
   try {
     const tokenInfo = await getValidAccessToken(req.sessionId);
     if (tokenInfo) {
-      authHeader = `Bearer ${tokenInfo.accessToken}`;
-      baseUrl = `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`;
-      siteUrl = tokenInfo.siteUrl;
+      auth = {
+        authHeader: `Bearer ${tokenInfo.accessToken}`,
+        baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
+        siteUrl: tokenInfo.siteUrl,
+      };
     }
   } catch (err) { /* fall through */ }
 
-  if (!authHeader) {
-    const jiraBaseUrl = process.env.JIRA_BASE_URL;
-    const jiraEmail = process.env.JIRA_USER_EMAIL;
-    const jiraApiToken = process.env.JIRA_API_TOKEN;
-    if (!jiraBaseUrl || !jiraEmail || !jiraApiToken) {
+  if (!auth) {
+    try {
+      auth = buildJiraAuthFromEnv();
+    } catch (err) {
       return res.status(401).json({ error: 'Not connected to Jira' });
     }
-    authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`;
-    baseUrl = jiraBaseUrl;
-    siteUrl = jiraBaseUrl;
   }
 
-  const results = [];
-  for (const ticket of tickets) {
-    try {
-      const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
-        method: 'POST',
-        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(ticket),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        results.push({ success: true, status: response.status, data, summary: ticket.fields?.summary });
-      } else {
-        // Parse Jira error response into a human-readable message
-        const errorMessages = [];
-        if (data.errorMessages?.length) errorMessages.push(...data.errorMessages);
-        if (data.errors) {
-          for (const [field, msg] of Object.entries(data.errors)) {
-            errorMessages.push(`${field}: ${msg}`);
-          }
-        }
-        if (data.message) errorMessages.push(data.message);
-        const errorDetail = errorMessages.length ? errorMessages.join('; ') : `HTTP ${response.status}`;
-        results.push({ success: false, status: response.status, error: errorDetail, data, summary: ticket.fields?.summary });
-      }
-    } catch (err) {
-      results.push({ success: false, error: err.message, summary: ticket.fields?.summary });
-    }
-  }
-
-  res.json({ created: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, total: tickets.length, results, siteUrl });
+  const result = await sharedSubmitToJira(tickets, auth);
+  res.json(result);
 });
 
 // Serve static frontend in production

@@ -1,17 +1,29 @@
 {
-  "name": "simple-website-about-mechan",
+  "name": "transcript-to-jira",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "start": "node server.js",
-    "preview": "vite preview"
+    "start:bot": "node bot/src/index.js",
+    "preview": "vite preview",
+    "dev:teamsfx": "env-cmd --silent -f .localConfigs npm run start:bot",
+    "dev:teamsfx:testtool": "env-cmd --silent -f .localConfigs.playground npm run start:bot",
+    "dev:teamsfx:launch-testtool": "env-cmd --silent -f env/.env.playground agentsplayground start",
+    "dev:bot": "env-cmd --silent -f .localConfigs nodemon --inspect=9239 --signal SIGINT ./bot/src/index.js",
+    "start:all": "concurrently \"npm run start\" \"npm run start:bot\""
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
+    "@azure/identity": "^4.11.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@microsoft/teams.apps": "^2.0.0",
+    "@microsoft/teams.ai": "^2.0.0",
+    "@microsoft/teams.openai": "^2.0.0",
+    "@microsoft/teams.common": "^2.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.27",
@@ -22,9 +34,10 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "isomorphic-fetch": "^3.0.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.575.0",
-    "openai": "^6.25.0",
+    "openai": "^4.70.0",
     "postcss": "^8.5.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -33,6 +46,8 @@
     "vite": "^7.3.1"
   },
   "devDependencies": {
+    "env-cmd": "^10.1.0",
+    "nodemon": "^3.1.7",
     "tailwindcss": "^3.4.19"
   }
 }

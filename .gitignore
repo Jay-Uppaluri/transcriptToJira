@@ -1,7 +1,31 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Environment / secrets
 .env
-.DS_Store
-server.log
+.localConfigs
+.localConfigs.playground
+env/.env.*.user
+env/.env.local
+
+# Logs
 *.log
+server.log
+
+# Data
 data/
+
+# Misc
+.DS_Store
+
+# Teams bot
+.notification.localstore.json
+.notification.playgroundstore.json
+appPackage/build
+
+# Dev tools
+devTools/m365agentsplayground.log
+devTools/playground/

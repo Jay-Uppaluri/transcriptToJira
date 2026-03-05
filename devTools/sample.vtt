@@ -1,0 +1,109 @@
+WEBVTT
+
+00:00:01.000 --> 00:00:07.000
+<v Sarah Chen>Alright everyone, let's get started. Today we're scoping out the notification system redesign.</v>
+
+00:00:08.000 --> 00:00:18.000
+<v Sarah Chen>Right now users are complaining that they miss important alerts because everything goes into one inbox with no prioritization.</v>
+
+00:00:19.000 --> 00:00:30.000
+<v Marcus Reid>Yeah, I've heard the same from support. The top complaint is that critical alerts like payment failures and security warnings get buried under marketing notifications.</v>
+
+00:00:31.000 --> 00:00:45.000
+<v Sarah Chen>Exactly. So the proposal is to split notifications into tiers. Tier one is critical, things like payment failures, account lockouts, security events. Those should always be visible and not dismissable until acknowledged.</v>
+
+00:00:46.000 --> 00:00:58.000
+<v Dev Patel>How do we define critical programmatically? Is that a flag on the notification object or does each service define its own priority?</v>
+
+00:00:59.000 --> 00:01:12.000
+<v Sarah Chen>Good question. We'll have a priority enum on the notification schema. Services tag their own events, but the platform enforces the display rules based on that tag.</v>
+
+00:01:13.000 --> 00:01:25.000
+<v Marcus Reid>What are the other tiers? You said tier one is critical.</v>
+
+00:01:26.000 --> 00:01:42.000
+<v Sarah Chen>Tier two is informational, things like successful transactions, feature updates, usage summaries. Those go into a standard feed. Tier three is promotional, which users can opt out of entirely.</v>
+
+00:01:43.000 --> 00:01:55.000
+<v Dev Patel>For tier one, are we thinking a modal overlay, a persistent banner, or a badge? Because on mobile the behavior might need to be different.</v>
+
+00:01:56.000 --> 00:02:10.000
+<v Sarah Chen>On web, a persistent top banner that stays until the user clicks acknowledge. On mobile, a push notification that opens the app directly to the alert detail.</v>
+
+00:02:11.000 --> 00:02:22.000
+<v Marcus Reid>We need to make sure the acknowledge action is logged server-side. Compliance requires an audit trail for security-related acknowledgements.</v>
+
+00:02:23.000 --> 00:02:35.000
+<v Sarah Chen>Right, that's a hard requirement. Every tier one acknowledgement needs a timestamp, user ID, and notification ID stored in the audit log table.</v>
+
+00:02:36.000 --> 00:02:50.000
+<v Dev Patel>What about notification preferences? Can users mute specific channels or sources? Like can they turn off notifications from a specific integration?</v>
+
+00:02:51.000 --> 00:03:05.000
+<v Sarah Chen>Yes, but with restrictions. They can mute tier two and tier three sources. Tier one cannot be muted, that's a business rule.</v>
+
+00:03:06.000 --> 00:03:18.000
+<v Marcus Reid>We should surface a preferences page somewhere easy to find. Currently it's buried four levels deep in account settings.</v>
+
+00:03:19.000 --> 00:03:30.000
+<v Sarah Chen>Agreed. Let's add a shortcut directly from the notification panel to the preferences page.</v>
+
+00:03:31.000 --> 00:03:45.000
+<v Dev Patel>On the backend, are we batching notifications? If a payment processor fires ten events in a second we don't want to spam the user with ten banners.</v>
+
+00:03:46.000 --> 00:04:00.000
+<v Sarah Chen>Good catch. For tier two and three we batch within a five minute window and group by source. For tier one we send immediately every time, no batching.</v>
+
+00:04:01.000 --> 00:04:12.000
+<v Marcus Reid>What's the SLA for tier one delivery? I'm thinking it needs to be under ten seconds from event to display.</v>
+
+00:04:13.000 --> 00:04:22.000
+<v Sarah Chen>Yes, under ten seconds end to end. We'll use a dedicated high priority queue for tier one events separate from the standard queue.</v>
+
+00:04:23.000 --> 00:04:38.000
+<v Dev Patel>That means we need a new queue infrastructure. Are we using the existing SQS setup or moving to something else?</v>
+
+00:04:39.000 --> 00:04:50.000
+<v Sarah Chen>Sticking with SQS but adding a separate FIFO queue with higher throughput allocation for critical events.</v>
+
+00:04:51.000 --> 00:05:05.000
+<v Marcus Reid>Timeline wise, what are we thinking? We have a board review in six weeks and they'll want to see the tier one flow at minimum.</v>
+
+00:05:06.000 --> 00:05:20.000
+<v Sarah Chen>Here's what I'm thinking. Week one and two, backend schema changes and queue infrastructure. Week three and four, frontend notification panel and banner component. Week five, preferences page and integration testing. Week six, final QA and staging demo.</v>
+
+00:05:21.000 --> 00:05:32.000
+<v Dev Patel>That's tight but doable if we don't scope creep. The mobile push piece might slip to a follow-up sprint though.</v>
+
+00:05:33.000 --> 00:05:45.000
+<v Sarah Chen>Noted. Mobile push is a stretch goal for this phase. Core scope is web only. Mobile is phase two.</v>
+
+00:05:46.000 --> 00:05:58.000
+<v Marcus Reid>One open question I have: do we need to support real-time updates via websocket or is polling acceptable for the notification feed?</v>
+
+00:05:59.000 --> 00:06:12.000
+<v Sarah Chen>For tier one we absolutely need websocket or SSE for real-time push. For tier two and three polling every thirty seconds is fine.</v>
+
+00:06:13.000 --> 00:06:25.000
+<v Dev Patel>Okay so we need a websocket server component too. That's another dependency to flag.</v>
+
+00:06:26.000 --> 00:06:38.000
+<v Sarah Chen>Correct. Let's add that to the dependency list. The infrastructure team owns the websocket gateway, we need to coordinate with them.</v>
+
+00:06:39.000 --> 00:06:50.000
+<v Marcus Reid>Any other dependencies we haven't called out?</v>
+
+00:06:51.000 --> 00:07:05.000
+<v Sarah Chen>The compliance team needs to sign off on the audit log schema before we finalize it. And design still needs to deliver the mockups for the preferences page, they said end of this week.</v>
+
+00:07:06.000 --> 00:07:18.000
+<v Dev Patel>What's our definition of done for this project? What are the acceptance criteria at a high level?</v>
+
+00:07:19.000 --> 00:07:40.000
+<v Sarah Chen>Tier one notifications appear within ten seconds. Tier one cannot be dismissed without acknowledgement. Acknowledgement is logged with full audit trail. Users can manage tier two and tier three preferences. The notification panel loads in under two seconds. Zero tier one notifications dropped under normal load.</v>
+
+00:07:41.000 --> 00:07:52.000
+<v Marcus Reid>That covers it. Let's wrap up. Sarah will write up the PRD and share it by end of week.</v>
+
+00:07:53.000 --> 00:08:00.000
+<v Sarah Chen>Will do. Thanks everyone, talk soon.</v>

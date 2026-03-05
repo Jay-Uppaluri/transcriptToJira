@@ -29,3 +29,5 @@ appPackage/build
 # Dev tools
 devTools/m365agentsplayground.log
 devTools/playground/
+data/
+data/

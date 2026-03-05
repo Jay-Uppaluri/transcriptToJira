@@ -562,7 +562,20 @@ app.post('/api/submit-to-jira', authenticateToken, async (req, res) => {
         body: JSON.stringify(ticket),
       });
       const data = await response.json();
-      results.push({ success: response.ok, status: response.status, data });
+      if (response.ok) {
+        results.push({ success: true, status: response.status, data, summary: ticket.fields?.summary });
+      } else {
+        const errorMessages = [];
+        if (data.errorMessages?.length) errorMessages.push(...data.errorMessages);
+        if (data.errors) {
+          for (const [field, msg] of Object.entries(data.errors)) {
+            errorMessages.push(`${field}: ${msg}`);
+          }
+        }
+        if (data.message) errorMessages.push(data.message);
+        const errorDetail = errorMessages.length ? errorMessages.join('; ') : `HTTP ${response.status}`;
+        results.push({ success: false, status: response.status, error: errorDetail, data, summary: ticket.fields?.summary });
+      }
     } catch (err) {
       results.push({ success: false, error: err.message });
     }
@@ -755,7 +768,21 @@ app.post('/api/vtt/submit-tickets', authenticateToken, async (req, res) => {
         body: JSON.stringify(ticket),
       });
       const data = await response.json();
-      results.push({ success: response.ok, status: response.status, data, summary: ticket.fields?.summary });
+      if (response.ok) {
+        results.push({ success: true, status: response.status, data, summary: ticket.fields?.summary });
+      } else {
+        // Parse Jira error response into a human-readable message
+        const errorMessages = [];
+        if (data.errorMessages?.length) errorMessages.push(...data.errorMessages);
+        if (data.errors) {
+          for (const [field, msg] of Object.entries(data.errors)) {
+            errorMessages.push(`${field}: ${msg}`);
+          }
+        }
+        if (data.message) errorMessages.push(data.message);
+        const errorDetail = errorMessages.length ? errorMessages.join('; ') : `HTTP ${response.status}`;
+        results.push({ success: false, status: response.status, error: errorDetail, data, summary: ticket.fields?.summary });
+      }
     } catch (err) {
       results.push({ success: false, error: err.message, summary: ticket.fields?.summary });
     }

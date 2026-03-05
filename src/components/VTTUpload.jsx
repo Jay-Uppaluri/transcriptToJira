@@ -310,35 +310,73 @@ export default function VTTUpload({ token, connection }) {
               </h2>
             </div>
             {submitResult.failed > 0 && (
-              <p className="text-sm text-yellow-700">{submitResult.failed} ticket(s) failed to create.</p>
+              <p className="text-sm text-yellow-700 mt-1">
+                {submitResult.failed} ticket{submitResult.failed > 1 ? 's' : ''} failed — see details below.
+              </p>
             )}
           </div>
 
-          <div className="space-y-2">
-            {submitResult.results.map((r, i) => (
-              <div key={i} className={`flex items-center justify-between p-3 rounded-md border ${r.success ? 'bg-white border-[#e9e8e4]' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center gap-2">
-                  {r.success ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-red-500" />}
-                  <span className="text-sm font-medium">{r.summary}</span>
-                  {r.success && r.data?.key && (
-                    <a
-                      href={`${(submitResult.siteUrl || '').replace(/\/$/, '')}/browse/${r.data.key}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#2383e2] text-sm flex items-center gap-1 hover:underline"
-                    >
-                      {r.data.key} <ExternalLink size={12} />
-                    </a>
-                  )}
-                </div>
-                {!r.success && <span className="text-xs text-red-600">{r.error || JSON.stringify(r.data?.errors)}</span>}
+          {/* Successful tickets */}
+          {submitResult.results.filter(r => r.success).length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-green-700 uppercase tracking-wide mb-2">Created Successfully</h3>
+              <div className="space-y-2">
+                {submitResult.results.filter(r => r.success).map((r, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-md border bg-white border-[#e9e8e4]">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={16} className="text-green-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-[#37352f]">{r.summary}</span>
+                    </div>
+                    {r.data?.key && (
+                      <a
+                        href={`${(submitResult.siteUrl || '').replace(/\/$/, '')}/browse/${r.data.key}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#2383e2] text-sm font-medium flex items-center gap-1 hover:underline flex-shrink-0"
+                      >
+                        {r.data.key} <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
 
-          <button onClick={reset} className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2]">
-            Upload Another Transcript
-          </button>
+          {/* Failed tickets */}
+          {submitResult.results.filter(r => !r.success).length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-red-700 uppercase tracking-wide mb-2">Failed</h3>
+              <div className="space-y-2">
+                {submitResult.results.filter(r => !r.success).map((r, i) => (
+                  <div key={i} className="p-4 rounded-md border bg-red-50 border-red-200">
+                    <div className="flex items-start gap-2">
+                      <XCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-[#37352f] block">{r.summary}</span>
+                        <div className="mt-2 p-3 bg-white rounded border border-red-100">
+                          <p className="text-sm font-medium text-red-800 mb-1">Why it failed:</p>
+                          <p className="text-sm text-red-700">{r.error || 'Unknown error — no details returned from Jira'}</p>
+                          {r.status && <p className="text-xs text-red-400 mt-1">HTTP {r.status}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button onClick={reset} className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2]">
+              Upload Another Transcript
+            </button>
+            {submitResult.failed > 0 && (
+              <button onClick={() => setStep('tickets')} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef] flex items-center gap-2">
+                <ArrowLeft size={16} /> Back to Fix & Retry
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

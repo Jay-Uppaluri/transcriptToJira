@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import OpenAI from 'openai';
 import db, { createSession, getSession, saveJiraConnection, getJiraConnection, deleteJiraConnection } from './server/db.js';
@@ -570,6 +571,210 @@ app.post('/api/submit-to-jira', authenticateToken, async (req, res) => {
   const created = results.filter(r => r.success).length;
   const failed = results.filter(r => !r.success).length;
   res.json({ created, failed, total: tickets.length, results, siteUrl });
+});
+
+// ==================== VTT Upload & Action Item Extraction ====================
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+function parseVTT(vttText) {
+  const lines = vttText.split('\n');
+  const entries = [];
+  let i = 0;
+  // Skip WEBVTT header
+  while (i < lines.length && !lines[i].includes('-->')) i++;
+  while (i < lines.length) {
+    if (lines[i].includes('-->')) {
+      i++;
+      let text = '';
+      while (i < lines.length && lines[i].trim() !== '' && !lines[i].includes('-->')) {
+        text += lines[i].trim() + ' ';
+        i++;
+      }
+      // Extract speaker from <v Name>text</v> format
+      const speakerMatch = text.match(/<v\s+([^>]+)>(.*?)<\/v>/);
+      if (speakerMatch) {
+        entries.push({ speaker: speakerMatch[1].trim(), text: speakerMatch[2].trim() });
+      } else {
+        entries.push({ speaker: 'Unknown', text: text.trim() });
+      }
+    } else {
+      i++;
+    }
+  }
+  return entries.map(e => `${e.speaker}: ${e.text}`).join('\n');
+}
+
+app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const vttText = req.file.buffer.toString('utf-8');
+    const transcript = parseVTT(vttText);
+    if (!transcript.trim()) return res.status(400).json({ error: 'Could not parse any content from VTT file' });
+
+    const projectKey = req.body.projectKey || process.env.JIRA_PROJECT_KEY || 'KAN';
+
+    // Step 1: Extract action items using OpenAI
+    const extraction = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a project manager analyzing a meeting transcript. Extract all action items, tasks, and deliverables discussed.
+
+For each action item, provide:
+- summary: A concise ticket title
+- description: Detailed description of what needs to be done
+- assignee: Who it's assigned to (use the speaker's name if mentioned, or "Unassigned")
+- priority: "Highest" | "High" | "Medium" | "Low" | "Lowest"
+- type: "Story" | "Task" | "Bug" | "Epic"
+- labels: relevant labels as an array
+
+Return a JSON array of action items. Be thorough — capture every task, decision, and follow-up mentioned.
+Return ONLY valid JSON. No markdown, no explanation.`
+        },
+        { role: 'user', content: `Here is the meeting transcript:\n\n${transcript}` }
+      ]
+    });
+
+    let actionItemsRaw = extraction.choices[0].message.content;
+    actionItemsRaw = actionItemsRaw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+    const actionItems = JSON.parse(actionItemsRaw);
+
+    // Step 2: Convert action items to Jira ticket format
+    const tickets = actionItems.map(item => ({
+      fields: {
+        project: { key: projectKey },
+        summary: item.summary,
+        description: {
+          type: 'doc',
+          version: 1,
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: item.description }]
+            },
+            ...(item.assignee && item.assignee !== 'Unassigned' ? [{
+              type: 'paragraph',
+              content: [{ type: 'text', text: `Assignee (from meeting): ${item.assignee}`, marks: [{ type: 'em' }] }]
+            }] : [])
+          ]
+        },
+        issuetype: { name: item.type || 'Task' },
+        priority: { name: item.priority || 'Medium' },
+        labels: item.labels || ['meeting-action-item']
+      }
+    }));
+
+    // Step 3: Optionally auto-submit to Jira
+    const autoSubmit = req.body.autoSubmit === 'true' || req.body.autoSubmit === true;
+
+    if (!autoSubmit) {
+      return res.json({ transcript, actionItems, tickets, submitted: false });
+    }
+
+    // Submit to Jira (reuse same logic as /api/submit-to-jira)
+    let authHeader, baseUrl, siteUrl;
+    try {
+      const tokenInfo = await getValidAccessToken(req.sessionId);
+      if (tokenInfo) {
+        authHeader = `Bearer ${tokenInfo.accessToken}`;
+        baseUrl = `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`;
+        siteUrl = tokenInfo.siteUrl;
+      }
+    } catch (err) {
+      console.error('OAuth token error, falling back to env vars:', err.message);
+    }
+
+    if (!authHeader) {
+      const jiraBaseUrl = process.env.JIRA_BASE_URL;
+      const jiraEmail = process.env.JIRA_USER_EMAIL;
+      const jiraApiToken = process.env.JIRA_API_TOKEN;
+      if (!jiraBaseUrl || !jiraEmail || !jiraApiToken) {
+        return res.status(401).json({ error: 'Not connected to Jira' });
+      }
+      authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`;
+      baseUrl = jiraBaseUrl;
+      siteUrl = jiraBaseUrl;
+    }
+
+    const results = [];
+    for (const ticket of tickets) {
+      try {
+        const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
+          method: 'POST',
+          headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(ticket),
+        });
+        const data = await response.json();
+        results.push({ success: response.ok, status: response.status, data, summary: ticket.fields.summary });
+      } catch (err) {
+        results.push({ success: false, error: err.message, summary: ticket.fields.summary });
+      }
+    }
+
+    res.json({
+      transcript,
+      actionItems,
+      tickets,
+      submitted: true,
+      created: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      total: tickets.length,
+      results,
+      siteUrl,
+    });
+  } catch (err) {
+    console.error('VTT upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Submit previously extracted VTT tickets to Jira
+app.post('/api/vtt/submit-tickets', authenticateToken, async (req, res) => {
+  const { tickets } = req.body;
+  if (!tickets || !tickets.length) return res.status(400).json({ error: 'No tickets provided' });
+
+  let authHeader, baseUrl, siteUrl;
+  try {
+    const tokenInfo = await getValidAccessToken(req.sessionId);
+    if (tokenInfo) {
+      authHeader = `Bearer ${tokenInfo.accessToken}`;
+      baseUrl = `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`;
+      siteUrl = tokenInfo.siteUrl;
+    }
+  } catch (err) { /* fall through */ }
+
+  if (!authHeader) {
+    const jiraBaseUrl = process.env.JIRA_BASE_URL;
+    const jiraEmail = process.env.JIRA_USER_EMAIL;
+    const jiraApiToken = process.env.JIRA_API_TOKEN;
+    if (!jiraBaseUrl || !jiraEmail || !jiraApiToken) {
+      return res.status(401).json({ error: 'Not connected to Jira' });
+    }
+    authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')}`;
+    baseUrl = jiraBaseUrl;
+    siteUrl = jiraBaseUrl;
+  }
+
+  const results = [];
+  for (const ticket of tickets) {
+    try {
+      const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
+        method: 'POST',
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(ticket),
+      });
+      const data = await response.json();
+      results.push({ success: response.ok, status: response.status, data, summary: ticket.fields?.summary });
+    } catch (err) {
+      results.push({ success: false, error: err.message, summary: ticket.fields?.summary });
+    }
+  }
+
+  res.json({ created: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, total: tickets.length, results, siteUrl });
 });
 
 // Serve static frontend in production

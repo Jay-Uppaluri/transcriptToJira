@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Mic, PanelLeftClose, PanelLeft, LogOut, FlaskConical, Loader2, MoreHorizontal } from 'lucide-react';
+import { FileText, Mic, Upload, PanelLeftClose, PanelLeft, LogOut, FlaskConical, Loader2, MoreHorizontal } from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'documents', label: 'Documents', icon: FileText },
   { key: 'transcripts', label: 'Transcripts', icon: Mic },
+  { key: 'vtt-upload', label: 'VTT Upload', icon: Upload },
 ];
 
 const AVATAR_COLORS = [

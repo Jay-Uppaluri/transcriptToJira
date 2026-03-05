@@ -6,6 +6,7 @@ import TranscriptList from './components/TranscriptList.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import TranscriptView from './components/TranscriptView.jsx';
 import TranscriptModal from './components/modal/TranscriptModal.jsx';
+import VTTUpload from './components/VTTUpload.jsx';
 import PRDDocument from './components/prd/PRDDocument.jsx';
 import TicketView from './components/tickets/TicketView.jsx';
 import useComments from './hooks/useComments.js';
@@ -308,6 +309,8 @@ export default function App() {
             <main className="max-w-5xl mx-auto px-6 py-12">
               {sidebarSection === 'documents' ? (
                 <PRDList token={token} onNewPRD={handleNewPRD} onOpenPRD={openPRD} />
+              ) : sidebarSection === 'vtt-upload' ? (
+                <VTTUpload token={token} connection={connection} />
               ) : (
                 <TranscriptList onOpenTranscript={openTranscript} />
               )}

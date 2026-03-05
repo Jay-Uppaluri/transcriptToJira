@@ -1,0 +1,281 @@
+import React, { useState, useRef } from 'react';
+import { Upload, FileText, Loader2, CheckCircle, XCircle, ArrowRight, Send, ChevronDown, ChevronUp, Trash2, ExternalLink } from 'lucide-react';
+
+export default function VTTUpload({ token, connection }) {
+  const [file, setFile] = useState(null);
+  const [projectKey, setProjectKey] = useState('KAN');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState(null);
+  const [expandedTranscript, setExpandedTranscript] = useState(false);
+  const fileInputRef = useRef(null);
+
+  function handleDrop(e) {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f && (f.name.endsWith('.vtt') || f.type === 'text/vtt')) setFile(f);
+    else setError('Please upload a .vtt file');
+  }
+
+  function handleFileSelect(e) {
+    const f = e.target.files[0];
+    if (f) { setFile(f); setError(''); }
+  }
+
+  async function processFile() {
+    if (!file) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    setSubmitResult(null);
+
+    const formData = new FormData();
+    formData.append('vttFile', file);
+    formData.append('projectKey', projectKey);
+    formData.append('autoSubmit', 'false');
+
+    try {
+      const res = await fetch('/api/vtt/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setResult(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitTickets() {
+    if (!result?.tickets?.length) return;
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/vtt/submit-tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        body: JSON.stringify({ tickets: result.tickets }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSubmitResult(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function removeTicket(index) {
+    setResult(prev => ({
+      ...prev,
+      tickets: prev.tickets.filter((_, i) => i !== index),
+      actionItems: prev.actionItems.filter((_, i) => i !== index),
+    }));
+  }
+
+  function reset() {
+    setFile(null);
+    setResult(null);
+    setSubmitResult(null);
+    setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  const priorityColors = {
+    Highest: 'bg-red-100 text-red-700',
+    High: 'bg-orange-100 text-orange-700',
+    Medium: 'bg-yellow-100 text-yellow-700',
+    Low: 'bg-blue-100 text-blue-700',
+    Lowest: 'bg-gray-100 text-gray-600',
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-[#37352f] mb-2">Upload Meeting Transcript</h1>
+        <p className="text-[#787774] text-base">Upload a .vtt transcript file to automatically extract action items and create Jira tickets.</p>
+      </div>
+
+      {/* Upload area */}
+      {!result && !submitResult && (
+        <div className="space-y-6">
+          <div
+            onDragOver={e => e.preventDefault()}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors
+              ${file ? 'border-green-300 bg-green-50' : 'border-[#e9e8e4] hover:border-[#c4c3bf] bg-[#fbfbfa]'}`}
+          >
+            <input ref={fileInputRef} type="file" accept=".vtt" onChange={handleFileSelect} className="hidden" />
+            {file ? (
+              <div className="flex items-center justify-center gap-3">
+                <FileText size={24} className="text-green-600" />
+                <span className="text-[#37352f] font-medium">{file.name}</span>
+                <span className="text-[#787774] text-sm">({(file.size / 1024).toFixed(1)} KB)</span>
+              </div>
+            ) : (
+              <div>
+                <Upload size={32} className="mx-auto mb-3 text-[#787774]" />
+                <p className="text-[#37352f] font-medium mb-1">Drop a .vtt file here or click to browse</p>
+                <p className="text-[#787774] text-sm">Supports WebVTT transcript files from Teams meetings</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-sm font-medium text-[#37352f] mb-1">Jira Project Key</label>
+              <input
+                type="text"
+                value={projectKey}
+                onChange={e => setProjectKey(e.target.value.toUpperCase())}
+                className="px-3 py-2 border border-[#e9e8e4] rounded-md text-sm w-32 focus:outline-none focus:ring-2 focus:ring-[#2383e2]"
+              />
+            </div>
+            <button
+              onClick={processFile}
+              disabled={!file || loading}
+              className="mt-6 px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Analyzing...</> : <><ArrowRight size={16} /> Extract Action Items</>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm flex items-center gap-2">
+          <XCircle size={16} /> {error}
+          <button onClick={() => setError('')} className="ml-auto text-xs hover:underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* Results - Action Items & Tickets */}
+      {result && !submitResult && (
+        <div className="space-y-6">
+          {/* Transcript preview */}
+          <div className="border border-[#e9e8e4] rounded-lg overflow-hidden">
+            <button
+              onClick={() => setExpandedTranscript(!expandedTranscript)}
+              className="w-full px-4 py-3 bg-[#fbfbfa] flex items-center justify-between text-sm font-medium text-[#37352f] hover:bg-[#f1f1ef]"
+            >
+              <span>📝 Parsed Transcript ({result.transcript.split('\n').length} lines)</span>
+              {expandedTranscript ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {expandedTranscript && (
+              <pre className="p-4 text-xs text-[#787774] max-h-64 overflow-y-auto whitespace-pre-wrap">{result.transcript}</pre>
+            )}
+          </div>
+
+          {/* Action Items */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-[#37352f]">
+                Extracted Action Items ({result.tickets.length})
+              </h2>
+              <div className="flex gap-2">
+                <button onClick={reset} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef]">
+                  Start Over
+                </button>
+                <button
+                  onClick={submitTickets}
+                  disabled={submitting || !result.tickets.length}
+                  className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 flex items-center gap-2"
+                >
+                  {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {result.tickets.length} Jira Tickets</>}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {result.actionItems.map((item, i) => (
+                <div key={i} className="border border-[#e9e8e4] rounded-lg p-4 bg-white hover:shadow-sm transition-shadow">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityColors[item.priority] || priorityColors.Medium}`}>
+                          {item.priority}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                          {item.type || 'Task'}
+                        </span>
+                        {item.assignee && item.assignee !== 'Unassigned' && (
+                          <span className="text-xs text-[#787774]">→ {item.assignee}</span>
+                        )}
+                      </div>
+                      <h3 className="font-medium text-[#37352f]">{item.summary}</h3>
+                      <p className="text-sm text-[#787774] mt-1">{item.description}</p>
+                      {item.labels?.length > 0 && (
+                        <div className="flex gap-1 mt-2">
+                          {item.labels.map((label, j) => (
+                            <span key={j} className="px-2 py-0.5 bg-[#f1f1ef] text-[#787774] rounded text-xs">{label}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => removeTicket(i)} className="text-[#c4c3bf] hover:text-red-500 p-1" title="Remove">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submit Results */}
+      {submitResult && (
+        <div className="space-y-6">
+          <div className={`p-6 rounded-lg border ${submitResult.failed === 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <CheckCircle size={24} className={submitResult.failed === 0 ? 'text-green-600' : 'text-yellow-600'} />
+              <h2 className="text-xl font-semibold text-[#37352f]">
+                {submitResult.created} of {submitResult.total} tickets created
+              </h2>
+            </div>
+            {submitResult.failed > 0 && (
+              <p className="text-sm text-yellow-700">{submitResult.failed} ticket(s) failed to create.</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {submitResult.results.map((r, i) => (
+              <div key={i} className={`flex items-center justify-between p-3 rounded-md border ${r.success ? 'bg-white border-[#e9e8e4]' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center gap-2">
+                  {r.success ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-red-500" />}
+                  <span className="text-sm font-medium">{r.summary}</span>
+                  {r.success && r.data?.key && (
+                    <a
+                      href={`${submitResult.siteUrl?.replace(/\/$/, '')}/browse/${r.data.key}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#2383e2] text-sm flex items-center gap-1 hover:underline"
+                    >
+                      {r.data.key} <ExternalLink size={12} />
+                    </a>
+                  )}
+                </div>
+                {!r.success && <span className="text-xs text-red-600">{r.error || JSON.stringify(r.data?.errors)}</span>}
+              </div>
+            ))}
+          </div>
+
+          <button onClick={reset} className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2]">
+            Upload Another Transcript
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

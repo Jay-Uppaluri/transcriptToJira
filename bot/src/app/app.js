@@ -23,14 +23,13 @@ const {
   buildValidationCard,
 } = require('../services/adaptiveCards');
 
-// ─── Message Deduplication ───
-// Teams SDK retries messages when responses take too long.
-// Track processed activity IDs to skip duplicates.
-const processedActivities = new Map(); // activityId -> timestamp
+// ─── Deduplication ───
+// Teams retries messages AND card submits when responses take too long.
+// Track both activity IDs and action hashes to skip duplicates.
+const processedActivities = new Map(); // key -> timestamp
 const DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const DEDUP_CLEANUP_INTERVAL = 60 * 1000; // clean up every minute
+const DEDUP_CLEANUP_INTERVAL = 60 * 1000;
 
-// Periodic cleanup of old entries
 setInterval(() => {
   const cutoff = Date.now() - DEDUP_TTL_MS;
   for (const [id, ts] of processedActivities) {
@@ -42,6 +41,15 @@ function isDuplicate(activityId) {
   if (!activityId) return false;
   if (processedActivities.has(activityId)) return true;
   processedActivities.set(activityId, Date.now());
+  return false;
+}
+
+// For card submits: dedup based on action + key data (prdId, ticketsId, etc.)
+function isActionDuplicate(data) {
+  if (!data?.action) return false;
+  const key = `action:${data.action}:${data.prdId || data.ticketsId || data.transcriptId || data.urlId || ''}`;
+  if (processedActivities.has(key)) return true;
+  processedActivities.set(key, Date.now());
   return false;
 }
 
@@ -237,24 +245,36 @@ app.on('message', async ({ send, stream, activity }) => {
     const data = activity.value;
     console.log('[card.submit] Action received:', data.action);
 
+    // Dedup card submits — Teams retries these when OpenAI calls take >15s
+    if (isActionDuplicate(data)) {
+      console.log(`[dedup] Skipping duplicate card action: ${data.action}`);
+      return;
+    }
+
     if (data.action === 'generateTickets') {
-      await handleGenerateTickets(send, data);
+      // Fire and forget — send progress immediately, process async
+      handleGenerateTickets(send, data).catch(err => {
+        console.error('[generateTickets] Unhandled error:', err);
+      });
       return;
     }
 
     if (data.action === 'submitToJira') {
-      await handleSubmitToJira(send, data);
+      handleSubmitToJira(send, data).catch(err => {
+        console.error('[submitToJira] Unhandled error:', err);
+      });
       return;
     }
 
     if (data.action === 'retryPrdFromText') {
-      // Retry: re-run PRD generation from stored transcript
       const transcript = storage.get(data.transcriptId);
       if (!transcript) {
         await send(cardMessage(buildErrorCard('Original transcript has expired. Please paste it again with /prd-from-text.')));
         return;
       }
-      await handlePrdFromText(send, transcript);
+      handlePrdFromText(send, transcript).catch(err => {
+        console.error('[retryPrdFromText] Unhandled error:', err);
+      });
       return;
     }
 
@@ -264,7 +284,9 @@ app.on('message', async ({ send, stream, activity }) => {
         await send(cardMessage(buildErrorCard('Meeting URL data has expired. Please run /generate-prd again.')));
         return;
       }
-      await handleGeneratePrdFromUrl(send, url);
+      handleGeneratePrdFromUrl(send, url).catch(err => {
+        console.error('[retryGeneratePrd] Unhandled error:', err);
+      });
       return;
     }
 
@@ -290,7 +312,10 @@ app.on('message', async ({ send, stream, activity }) => {
       await send(cardMessage(buildValidationCard(validationError)));
       return;
     }
-    await handlePrdFromText(send, transcript);
+    // Fire and forget — handler sends progress card immediately
+    handlePrdFromText(send, transcript).catch(err => {
+      console.error('[prd-from-text] Unhandled error:', err);
+    });
     return;
   }
 
@@ -302,7 +327,9 @@ app.on('message', async ({ send, stream, activity }) => {
       await send(cardMessage(buildValidationCard(validationError)));
       return;
     }
-    await handleGeneratePrdFromUrl(send, joinUrl);
+    handleGeneratePrdFromUrl(send, joinUrl).catch(err => {
+      console.error('[generate-prd] Unhandled error:', err);
+    });
     return;
   }
 

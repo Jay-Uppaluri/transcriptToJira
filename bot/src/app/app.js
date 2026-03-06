@@ -72,19 +72,38 @@ const instructions = loadInstructions();
 function formatError(error, context) {
   const msg = error?.message || String(error);
 
+  // OpenAI errors
   if (msg.includes('OPENAI') || msg.includes('openai') || msg.includes('429') || msg.includes('rate limit')) {
-    return `**OpenAI API Error** — ${context}\n\n*Detail:* ${msg}\n\nThis is usually temporary. Please try again in a moment.`;
+    return `⚠️ **AI Service Temporarily Unavailable**\n\n${context}. The AI service is experiencing high demand. Please try again in a moment.`;
   }
+
+  // Jira errors
   if (msg.includes('JIRA') || msg.includes('jira') || msg.includes('Unauthorized') || msg.includes('401')) {
-    return `**Jira Connection Error** — ${context}\n\n*Detail:* ${msg}\n\nCheck that Jira credentials are configured correctly.`;
+    return `⚠️ **Jira Connection Issue**\n\n${context}. Please check that Jira is configured correctly and try again.`;
   }
-  if (msg.includes('GRAPH') || msg.includes('graph') || msg.includes('Meeting not found')) {
-    return `**Microsoft Graph Error** — ${context}\n\n*Detail:* ${msg}`;
+
+  // Graph API / Meeting errors — these already have user-friendly messages from graphService
+  if (msg.includes('denied access') || msg.includes('403 Forbidden') || msg.includes('Access Policy') || msg.includes('access policy')) {
+    return `🔒 **Permissions Still Propagating**\n\n${msg}`;
   }
+  if (msg.includes('Could not find this meeting') || msg.includes('Meeting not found')) {
+    return `🔍 **Meeting Not Found**\n\n${msg}`;
+  }
+  if (msg.includes('No transcripts found') || msg.includes('No transcript') || msg.includes('transcript was found but') || msg.includes('transcript content')) {
+    return `📋 ${msg}`;
+  }
+  if (msg.includes('Access denied') || msg.includes('Forbidden')) {
+    return `🔒 ${msg}`;
+  }
+
+  // Network errors
   if (msg.includes('ENOTFOUND') || msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
-    return `**Network Error** — ${context}\n\n*Detail:* ${msg}\n\nPlease check connectivity and try again.`;
+    return `🌐 **Connection Issue**\n\n${context}. Please check your network and try again.`;
   }
-  return `**Error** — ${context}\n\n*Detail:* ${msg}`;
+
+  // Generic fallback — include the detail so users (and admins) can diagnose
+  const detail = msg && msg !== 'undefined' && msg !== '[object Object]' ? `\n\n*Detail:* ${msg}` : '';
+  return `⚠️ **Something went wrong**\n\n${context}.${detail}\n\nIf this keeps happening, try again or use \`/prd-from-text\` to paste the transcript directly.`;
 }
 
 // Input validation
@@ -408,8 +427,9 @@ async function handleGeneratePrdFromUrl(send, joinUrl) {
 
     await send(cardMessage(buildPRDCard(prd, meetingSubject, prdId)));
   } catch (error) {
-    console.error('[generate-prd] Error:', error);
-    const errorMsg = formatError(error, 'Failed to generate PRD from meeting URL');
+    console.error('[generate-prd] Error:', error?.statusCode || '', error?.message || error);
+    if (error?.body) console.error('[generate-prd] Response body:', JSON.stringify(error.body).slice(0, 500));
+    const errorMsg = formatError(error, 'Failed to generate PRD from meeting');
     await send(cardMessage(buildErrorCard(errorMsg, 'retryGeneratePrd', { urlId })));
   }
 }

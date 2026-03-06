@@ -39,40 +39,96 @@ async function generateTickets(prd, projectKey, apiKey) {
  * @param {{ authHeader: string, baseUrl: string, siteUrl?: string }} auth - Jira auth config
  * @returns {Promise<{ created: number, failed: number, total: number, results: Array, siteUrl: string }>}
  */
+/**
+ * Sanitize a ticket's fields to avoid Jira API errors.
+ * Removes fields that commonly cause "No operation with name 'set' found" errors
+ * when the project doesn't have those fields configured.
+ */
+function sanitizeTicket(ticket) {
+  const cleaned = JSON.parse(JSON.stringify(ticket)); // deep clone
+  const fields = cleaned.fields;
+  if (!fields) return cleaned;
+
+  // Remove components — frequently causes "No operation with name 'set' found" errors
+  // when the Jira project doesn't have components configured or uses a different scheme
+  delete fields.components;
+
+  // Remove labels if empty
+  if (fields.labels && (!Array.isArray(fields.labels) || fields.labels.length === 0)) {
+    delete fields.labels;
+  }
+
+  // Remove any "update" operations that GPT might have hallucinated
+  delete cleaned.update;
+
+  // Remove any fields GPT might add that aren't standard create fields
+  delete fields.timetracking;
+  delete fields.customfield_10000; // avoid random custom fields
+
+  return cleaned;
+}
+
+/**
+ * Create a single Jira issue. Returns { success, status, data, error }.
+ */
+async function createJiraIssue(ticket, authHeader, baseUrl) {
+  try {
+    const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(ticket),
+    });
+    const data = await response.json();
+
+    if (response.ok) {
+      return { success: true, status: response.status, data };
+    }
+
+    const errorMessages = [];
+    if (data.errorMessages?.length) errorMessages.push(...data.errorMessages);
+    if (data.errors) {
+      for (const [field, msg] of Object.entries(data.errors)) {
+        errorMessages.push(`${field}: ${msg}`);
+      }
+    }
+    if (data.message) errorMessages.push(data.message);
+    const errorDetail = errorMessages.length ? errorMessages.join('; ') : `HTTP ${response.status}`;
+    return { success: false, status: response.status, error: errorDetail, data };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 async function submitToJira(tickets, auth) {
   const { authHeader, baseUrl, siteUrl } = auth;
   const results = [];
 
-  for (const ticket of tickets) {
-    try {
-      const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(ticket),
-      });
-      const data = await response.json();
+  for (const rawTicket of tickets) {
+    const ticket = sanitizeTicket(rawTicket);
+    const summary = ticket.fields?.summary;
 
-      if (response.ok) {
-        results.push({ success: true, status: response.status, data, summary: ticket.fields?.summary });
-      } else {
-        // Parse Jira error response into a human-readable message
-        const errorMessages = [];
-        if (data.errorMessages?.length) errorMessages.push(...data.errorMessages);
-        if (data.errors) {
-          for (const [field, msg] of Object.entries(data.errors)) {
-            errorMessages.push(`${field}: ${msg}`);
-          }
+    const result = await createJiraIssue(ticket, authHeader, baseUrl);
+
+    if (!result.success && result.error?.includes('operation')) {
+      // Retry with minimal fields — strip everything except required fields
+      console.log(`[jira] Retrying "${summary}" with minimal fields...`);
+      const minimalTicket = {
+        fields: {
+          project: ticket.fields.project,
+          summary: ticket.fields.summary,
+          description: ticket.fields.description,
+          issuetype: ticket.fields.issuetype,
         }
-        if (data.message) errorMessages.push(data.message);
-        const errorDetail = errorMessages.length ? errorMessages.join('; ') : `HTTP ${response.status}`;
-        results.push({ success: false, status: response.status, error: errorDetail, data, summary: ticket.fields?.summary });
-      }
-    } catch (err) {
-      results.push({ success: false, error: err.message, summary: ticket.fields?.summary });
+      };
+      if (ticket.fields.priority) minimalTicket.fields.priority = ticket.fields.priority;
+      const retryResult = await createJiraIssue(minimalTicket, authHeader, baseUrl);
+      results.push({ ...retryResult, summary });
+    } else {
+      results.push({ ...result, summary });
     }
   }
 

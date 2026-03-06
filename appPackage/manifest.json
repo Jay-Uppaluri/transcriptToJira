@@ -64,9 +64,25 @@
         "identity",
         "messageTeamMembers"
     ],
-    "validDomains": [],
+    "validDomains": [
+        "cortex-prd-app.azurewebsites.net"
+    ],
     "webApplicationInfo": {
         "id": "2075b241-0c2e-4233-a91f-29f5951c38e8",
         "resource": "api://botid-2075b241-0c2e-4233-a91f-29f5951c38e8"
+    },
+    "authorization": {
+        "permissions": {
+            "resourceSpecific": [
+                {
+                    "name": "OnlineMeeting.ReadBasic.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "OnlineMeetingTranscript.Read.Chat",
+                    "type": "Application"
+                }
+            ]
+        }
     }
 }

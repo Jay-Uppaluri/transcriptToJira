@@ -145,6 +145,84 @@ app.on('conversationUpdate', async ({ send, activity }) => {
   }
 });
 
+// ─── Meeting End Handler (Auto-Transcript) ───
+
+app.on('meetingEnd', async ({ send, activity }) => {
+  try {
+    const meetingData = activity.value || {};
+    const { joinUrl, title, id: meetingId } = meetingData;
+
+    console.log(`[meetingEnd] Meeting ended: "${title}" (id: ${meetingId})`);
+
+    if (!joinUrl) {
+      console.log('[meetingEnd] No joinUrl in meeting end event, skipping auto-transcript');
+      return;
+    }
+
+    // Notify users that we'll try to fetch the transcript
+    await send(cardMessage(buildProgressCard(
+      `Meeting "${title || 'Untitled'}" has ended. Checking for transcript...`,
+      1, 3
+    )));
+
+    // Transcripts take time to process after meeting ends.
+    // Retry with exponential backoff: wait 15s, 30s, 60s
+    const delays = [15000, 30000, 60000];
+    let transcript = null;
+    let meetingSubject = title || 'Untitled Meeting';
+
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+
+      try {
+        const result = await getMeetingTranscript(joinUrl);
+        transcript = result.transcript;
+        meetingSubject = result.meetingSubject || meetingSubject;
+        break;
+      } catch (err) {
+        const isNotReady = err.message?.includes('No transcripts found') ||
+                          err.message?.includes('not found');
+        if (isNotReady && attempt < delays.length - 1) {
+          console.log(`[meetingEnd] Transcript not ready yet (attempt ${attempt + 1}), retrying...`);
+          continue;
+        }
+        if (isNotReady) {
+          // After all retries, transcript wasn't enabled for this meeting
+          console.log('[meetingEnd] No transcript available after retries — transcription may not have been enabled');
+          await send(new MessageActivity(
+            `📝 No transcript was found for "${meetingSubject}". ` +
+            `Make sure transcription is enabled during the meeting.\n\n` +
+            `You can still paste a transcript manually with: \`/prd-from-text <transcript>\``
+          ));
+          return;
+        }
+        throw err; // Non-retriable error
+      }
+    }
+
+    if (!transcript) return;
+
+    // Auto-generate PRD
+    await send(cardMessage(buildProgressCard(
+      `Got transcript for "${meetingSubject}". Generating PRD...`,
+      2, 3
+    )));
+
+    const { prd } = await generatePRD(transcript);
+
+    const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(prdId, prd);
+
+    await send(cardMessage(buildPRDCard(prd, meetingSubject, prdId)));
+    console.log(`[meetingEnd] Auto-generated PRD for "${meetingSubject}"`);
+
+  } catch (err) {
+    console.error('[meetingEnd] Error:', err);
+    const errorMsg = formatError(err, `Failed to auto-generate PRD from meeting transcript`);
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+});
+
 // ─── Message Handler ───
 
 app.on('message', async ({ send, stream, activity }) => {

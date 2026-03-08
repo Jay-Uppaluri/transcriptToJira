@@ -151,7 +151,7 @@ function buildHelpCard() {
     },
     {
       type: 'TextBlock',
-      text: `1. Paste your transcript → I generate a **PRD**\n2. Review the PRD → Click **Generate Jira Tickets**\n3. Review tickets → Click **Submit to Jira**\n\nYou can also just chat with me for general questions.`,
+      text: `1. Paste transcript or provide meeting URL → Review the **Summary**\n2. Confirm summary → I generate a **PRD**\n3. Chat to **edit the PRD** until you're happy\n4. Click **Generate Jira Tickets** → Review **drafts**\n5. Edit tickets, toggle off any you don't want → **Push to Jira**\n\nYou can also just chat with me for general questions.`,
       wrap: true,
       spacing: 'Small',
     },
@@ -259,6 +259,76 @@ function buildErrorCard(errorMessage, retryAction, retryData) {
   return card(body, actions);
 }
 
+// ─── Summary Card ───
+
+function buildSummaryCard(summary, meetingSubject, dataId, sourceType) {
+  const sections = parsePRDSections(summary);
+
+  const body = [
+    ...headerBlock(ICON.doc, `Meeting Summary: ${meetingSubject}`, 'Review before generating PRD'),
+    divider(),
+  ];
+
+  if (sections.length > 1) {
+    for (const section of sections) {
+      if (section.title) {
+        body.push({
+          type: 'TextBlock',
+          text: `**${section.title}**`,
+          wrap: true,
+          spacing: 'Medium',
+          weight: 'Bolder',
+          size: 'Medium',
+        });
+      }
+      body.push({
+        type: 'TextBlock',
+        text: section.content,
+        wrap: true,
+        spacing: 'Small',
+      });
+    }
+  } else {
+    body.push({
+      type: 'TextBlock',
+      text: summary,
+      wrap: true,
+      spacing: 'Medium',
+    });
+  }
+
+  body.push(divider());
+  body.push({
+    type: 'TextBlock',
+    text: '💬 Add any notes or context to include in the PRD (optional):',
+    wrap: true,
+    spacing: 'Medium',
+    isSubtle: true,
+  });
+  body.push({
+    type: 'Input.Text',
+    id: 'additionalNotes',
+    placeholder: 'e.g., "Focus on the mobile experience", "Include API rate limiting requirements"',
+    isMultiline: true,
+  });
+  body.push({
+    type: 'Input.Text',
+    id: 'projectKey',
+    label: 'Jira Project Key',
+    value: config.jiraProjectKey,
+    placeholder: 'e.g., KAN',
+  });
+
+  return card(body, [
+    {
+      type: 'Action.Submit',
+      title: `${ICON.check} Confirm & Generate PRD`,
+      data: { action: 'confirmSummary', dataId, sourceType },
+      style: 'positive',
+    },
+  ]);
+}
+
 // ─── PRD Card ───
 
 function buildPRDCard(prdContent, meetingSubject, prdId) {
@@ -305,7 +375,13 @@ function buildPRDCard(prdContent, meetingSubject, prdId) {
   body.push(divider());
   body.push({
     type: 'TextBlock',
-    text: `${ICON.ticket} Ready to generate Jira tickets from this PRD.`,
+    text: '💬 **Want to make changes?** Reply with edit instructions (e.g., "add a security section", "remove the timeline", "make the user stories more detailed").',
+    wrap: true,
+    spacing: 'Medium',
+  });
+  body.push({
+    type: 'TextBlock',
+    text: `${ICON.ticket} When you're happy with the PRD, generate Jira tickets:`,
     wrap: true,
     spacing: 'Medium',
     isSubtle: true,
@@ -358,9 +434,9 @@ function parsePRDSections(prd) {
   }));
 }
 
-// ─── Tickets Card ───
+// ─── Ticket Drafts Card (with toggles and edit buttons) ───
 
-function buildTicketsCard(tickets, projectKey, ticketsId) {
+function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
   const counts = {};
   for (const t of tickets) {
     const type = t.fields?.issuetype?.name || 'Task';
@@ -372,22 +448,32 @@ function buildTicketsCard(tickets, projectKey, ticketsId) {
     .join('  •  ');
 
   const body = [
-    ...headerBlock(ICON.ticket, 'Jira Tickets Generated', `${tickets.length} tickets ready for review`),
+    ...headerBlock(ICON.ticket, 'Ticket Drafts', `${tickets.length} tickets ready for review`),
     {
       type: 'TextBlock',
       text: summaryParts,
       wrap: true,
       spacing: 'Small',
     },
+    {
+      type: 'TextBlock',
+      text: 'Toggle tickets on/off to include or exclude them. Click **Edit** to modify a ticket.',
+      wrap: true,
+      spacing: 'Small',
+      isSubtle: true,
+    },
     divider(),
   ];
 
-  // Group by type
+  // Flat list with toggles and edit buttons
+  let ticketIndex = 0;
   const grouped = {};
-  for (const t of tickets) {
-    const type = t.fields?.issuetype?.name || 'Task';
-    if (!grouped[type]) grouped[type] = [];
-    grouped[type].push(t);
+  const indexMap = {}; // type -> [originalIndex]
+  for (let i = 0; i < tickets.length; i++) {
+    const type = tickets[i].fields?.issuetype?.name || 'Task';
+    if (!grouped[type]) { grouped[type] = []; indexMap[type] = []; }
+    grouped[type].push(tickets[i]);
+    indexMap[type].push(i);
   }
 
   for (const [type, items] of Object.entries(grouped)) {
@@ -398,7 +484,9 @@ function buildTicketsCard(tickets, projectKey, ticketsId) {
       spacing: 'Medium',
     });
 
-    for (const t of items) {
+    for (let j = 0; j < items.length; j++) {
+      const t = items[j];
+      const idx = indexMap[type][j];
       const priority = t.fields?.priority?.name || 'Medium';
       const priorityIcon = priority === 'High' || priority === 'Highest' ? '🔴'
         : priority === 'Low' || priority === 'Lowest' ? '🔵' : '🟡';
@@ -409,12 +497,26 @@ function buildTicketsCard(tickets, projectKey, ticketsId) {
         columns: [
           {
             type: 'Column',
+            width: 'auto',
+            items: [{
+              type: 'Input.Toggle',
+              id: `include_${idx}`,
+              title: '',
+              value: 'true',
+              valueOn: 'true',
+              valueOff: 'false',
+            }],
+            verticalContentAlignment: 'Center',
+          },
+          {
+            type: 'Column',
             width: 'stretch',
             items: [{
               type: 'TextBlock',
               text: t.fields?.summary || 'Untitled',
               wrap: true,
             }],
+            verticalContentAlignment: 'Center',
           },
           {
             type: 'Column',
@@ -441,14 +543,159 @@ function buildTicketsCard(tickets, projectKey, ticketsId) {
     size: 'Small',
   });
 
+  const actions = [];
+
+  // Edit buttons per ticket as a single Action.Submit
+  actions.push({
+    type: 'Action.Submit',
+    title: `${ICON.task} Edit Tickets`,
+    data: { action: 'showEditMenu', ticketsId, projectKey },
+  });
+
+  actions.push({
+    type: 'Action.Submit',
+    title: `${ICON.jira} Push Selected to Jira`,
+    data: { action: 'submitSelectedToJira', ticketsId, projectKey },
+    style: 'positive',
+  });
+
+  return card(body, actions);
+}
+
+// ─── Edit Ticket Menu Card (pick which ticket to edit) ───
+
+function buildEditTicketMenuCard(tickets, ticketsId, projectKey) {
+  const body = [
+    ...headerBlock(ICON.task, 'Edit Tickets', 'Select a ticket to edit'),
+    divider(),
+  ];
+
+  const actions = [];
+  for (let i = 0; i < tickets.length; i++) {
+    const t = tickets[i];
+    const type = t.fields?.issuetype?.name || 'Task';
+    const icon = ISSUE_ICON[type] || '📋';
+    actions.push({
+      type: 'Action.Submit',
+      title: `${icon} ${t.fields?.summary || 'Untitled'}`,
+      data: { action: 'editTicket', ticketsId, ticketIndex: i, projectKey },
+    });
+  }
+
+  actions.push({
+    type: 'Action.Submit',
+    title: `${ICON.retry} Back to Drafts`,
+    data: { action: 'cancelTicketEdit', ticketsId, projectKey },
+  });
+
+  return card(body, actions);
+}
+
+// ─── Edit Single Ticket Card ───
+
+function buildEditTicketCard(ticket, ticketIndex, ticketsId, projectKey) {
+  const summary = ticket.fields?.summary || '';
+  const priority = ticket.fields?.priority?.name || 'Medium';
+  const type = ticket.fields?.issuetype?.name || 'Task';
+  const description = adfToPlainText(ticket.fields?.description);
+
+  const body = [
+    ...headerBlock(ICON.task, `Edit: ${type}`, summary),
+    divider(),
+    {
+      type: 'Input.Text',
+      id: 'editTitle',
+      label: 'Title',
+      value: summary,
+      placeholder: 'Ticket title',
+    },
+    {
+      type: 'Input.Text',
+      id: 'editDescription',
+      label: 'Description',
+      value: description,
+      placeholder: 'Ticket description',
+      isMultiline: true,
+    },
+    {
+      type: 'Input.ChoiceSet',
+      id: 'editPriority',
+      label: 'Priority',
+      value: priority,
+      choices: [
+        { title: '🔴 Highest', value: 'Highest' },
+        { title: '🔴 High', value: 'High' },
+        { title: '🟡 Medium', value: 'Medium' },
+        { title: '🔵 Low', value: 'Low' },
+        { title: '🔵 Lowest', value: 'Lowest' },
+      ],
+    },
+  ];
+
   return card(body, [
     {
       type: 'Action.Submit',
-      title: `${ICON.jira} Submit All to Jira`,
-      data: { action: 'submitToJira', ticketsId, projectKey },
+      title: `${ICON.check} Save Changes`,
+      data: { action: 'saveTicketEdit', ticketsId, ticketIndex, projectKey },
       style: 'positive',
     },
+    {
+      type: 'Action.Submit',
+      title: 'Cancel',
+      data: { action: 'cancelTicketEdit', ticketsId, projectKey },
+    },
   ]);
+}
+
+// ─── ADF Conversion Helpers ───
+
+function adfToPlainText(adfDoc) {
+  if (!adfDoc || !adfDoc.content) return '';
+
+  function extractText(nodes) {
+    let text = '';
+    for (const node of nodes) {
+      if (node.type === 'text') {
+        text += node.text || '';
+      } else if (node.type === 'hardBreak') {
+        text += '\n';
+      } else if (node.type === 'paragraph') {
+        text += extractText(node.content || []) + '\n';
+      } else if (node.type === 'bulletList' || node.type === 'orderedList') {
+        for (const item of (node.content || [])) {
+          text += '• ' + extractText(item.content || []);
+        }
+      } else if (node.type === 'listItem') {
+        text += extractText(node.content || []);
+      } else if (node.type === 'heading') {
+        text += extractText(node.content || []) + '\n';
+      } else if (node.content) {
+        text += extractText(node.content);
+      }
+    }
+    return text;
+  }
+
+  return extractText(adfDoc.content).trim();
+}
+
+function plainTextToAdf(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const content = lines.map(line => ({
+    type: 'paragraph',
+    content: [{ type: 'text', text: line }],
+  }));
+
+  return {
+    type: 'doc',
+    version: 1,
+    content: content.length > 0 ? content : [{ type: 'paragraph', content: [{ type: 'text', text: ' ' }] }],
+  };
+}
+
+// Legacy alias for backward compatibility
+function buildTicketsCard(tickets, projectKey, ticketsId) {
+  return buildTicketDraftsCard(tickets, projectKey, ticketsId);
 }
 
 // ─── Jira Result Card ───
@@ -540,9 +787,15 @@ module.exports = {
   buildProgressCard,
   buildErrorCard,
   buildPRDCard,
+  buildSummaryCard,
   buildTicketsCard,
+  buildTicketDraftsCard,
+  buildEditTicketMenuCard,
+  buildEditTicketCard,
   buildJiraResultCard,
   buildWelcomeCard,
   buildHelpCard,
   buildValidationCard,
+  adfToPlainText,
+  plainTextToAdf,
 };

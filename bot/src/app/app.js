@@ -10,17 +10,21 @@ const config = require("../config");
 
 // Services
 const { getMeetingTranscript } = require('../services/graphService');
-const { generatePRD } = require('../services/prdService');
+const { generatePRD, generateSummary, editPRD } = require('../services/prdService');
 const { generateTickets, submitToJira } = require('../services/ticketService');
 const {
   buildPRDCard,
-  buildTicketsCard,
+  buildSummaryCard,
+  buildTicketDraftsCard,
+  buildEditTicketMenuCard,
+  buildEditTicketCard,
   buildJiraResultCard,
   buildProgressCard,
   buildErrorCard,
   buildWelcomeCard,
   buildHelpCard,
   buildValidationCard,
+  plainTextToAdf,
 } = require('../services/adaptiveCards');
 
 // ─── Deduplication ───
@@ -47,7 +51,7 @@ function isDuplicate(activityId) {
 // For card submits: dedup based on action + key data (prdId, ticketsId, etc.)
 function isActionDuplicate(data) {
   if (!data?.action) return false;
-  const key = `action:${data.action}:${data.prdId || data.ticketsId || data.transcriptId || data.urlId || ''}`;
+  const key = `action:${data.action}:${data.prdId || data.ticketsId || data.transcriptId || data.urlId || data.dataId || ''}`;
   if (processedActivities.has(key)) return true;
   processedActivities.set(key, Date.now());
   return false;
@@ -229,23 +233,23 @@ app.on('meetingEnd', async ({ send, activity }) => {
 
     if (!transcript) return;
 
-    // Auto-generate PRD
+    // Generate summary for review before PRD
     await send(cardMessage(buildProgressCard(
-      `Got transcript for "${meetingSubject}". Generating PRD...`,
+      `Got transcript for "${meetingSubject}". Generating summary...`,
       2, 3
     )));
 
-    const { prd } = await generatePRD(transcript);
+    const { summary } = await generateSummary(transcript);
 
-    const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    storage.set(prdId, prd);
+    const dataId = `data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(dataId, { transcript, meetingSubject });
 
-    await send(cardMessage(buildPRDCard(prd, meetingSubject, prdId)));
-    console.log(`[meetingEnd] Auto-generated PRD for "${meetingSubject}"`);
+    await send(cardMessage(buildSummaryCard(summary, meetingSubject, dataId, 'meeting')));
+    console.log(`[meetingEnd] Summary generated for "${meetingSubject}", awaiting confirmation`);
 
   } catch (err) {
     console.error('[meetingEnd] Error:', err);
-    const errorMsg = formatError(err, `Failed to auto-generate PRD from meeting transcript`);
+    const errorMsg = formatError(err, `Failed to process meeting transcript`);
     await send(cardMessage(buildErrorCard(errorMsg)));
   }
 });
@@ -270,17 +274,59 @@ app.on('message', async ({ send, stream, activity }) => {
       return;
     }
 
+    if (data.action === 'confirmSummary') {
+      handleConfirmSummary(send, data, activity).catch(err => {
+        console.error('[confirmSummary] Unhandled error:', err);
+      });
+      return;
+    }
+
     if (data.action === 'generateTickets') {
-      // Fire and forget — send progress immediately, process async
-      handleGenerateTickets(send, data).catch(err => {
+      handleGenerateTickets(send, data, activity).catch(err => {
         console.error('[generateTickets] Unhandled error:', err);
       });
       return;
     }
 
+    if (data.action === 'submitSelectedToJira') {
+      handleSubmitSelectedToJira(send, data).catch(err => {
+        console.error('[submitSelectedToJira] Unhandled error:', err);
+      });
+      return;
+    }
+
     if (data.action === 'submitToJira') {
+      // Legacy support
       handleSubmitToJira(send, data).catch(err => {
         console.error('[submitToJira] Unhandled error:', err);
+      });
+      return;
+    }
+
+    if (data.action === 'showEditMenu') {
+      handleShowEditMenu(send, data).catch(err => {
+        console.error('[showEditMenu] Unhandled error:', err);
+      });
+      return;
+    }
+
+    if (data.action === 'editTicket') {
+      handleEditTicket(send, data).catch(err => {
+        console.error('[editTicket] Unhandled error:', err);
+      });
+      return;
+    }
+
+    if (data.action === 'saveTicketEdit') {
+      handleSaveTicketEdit(send, data).catch(err => {
+        console.error('[saveTicketEdit] Unhandled error:', err);
+      });
+      return;
+    }
+
+    if (data.action === 'cancelTicketEdit') {
+      handleCancelTicketEdit(send, data).catch(err => {
+        console.error('[cancelTicketEdit] Unhandled error:', err);
       });
       return;
     }
@@ -352,6 +398,18 @@ app.on('message', async ({ send, stream, activity }) => {
     return;
   }
 
+  // ─── PRD Edit Mode: Check if user has an active PRD editing session ───
+  const conversationId = activity.conversation.id;
+  const activePrdKey = `activePrd_${conversationId}`;
+  const activePrdData = storage.get(activePrdKey);
+
+  if (activePrdData && cleanText && !lowerText.startsWith('/')) {
+    handlePrdEdit(send, activePrdData, cleanText, activePrdKey).catch(err => {
+      console.error('[prdEdit] Unhandled error:', err);
+    });
+    return;
+  }
+
   // ─── Default: AI Chat ───
   const conversationKey = `${activity.conversation.id}/${activity.from.id}`;
   const messages = storage.get(conversationKey) || [];
@@ -389,22 +447,22 @@ app.on('message', async ({ send, stream, activity }) => {
 // ─── Command Handlers ───
 
 async function handlePrdFromText(send, transcript) {
-  // Store transcript for retry
   const transcriptId = `transcript_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   storage.set(transcriptId, transcript);
 
   try {
-    await send(cardMessage(buildProgressCard('Analyzing transcript and generating PRD...', 1, 2)));
+    await send(cardMessage(buildProgressCard('Analyzing transcript...', 1, 2)));
 
-    const { prd } = await generatePRD(transcript);
+    const { summary } = await generateSummary(transcript);
 
-    const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    storage.set(prdId, prd);
+    // Store transcript for later PRD generation
+    const dataId = `data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(dataId, { transcript, transcriptId });
 
-    await send(cardMessage(buildPRDCard(prd, 'Manual Transcript', prdId)));
+    await send(cardMessage(buildSummaryCard(summary, 'Manual Transcript', dataId, 'text')));
   } catch (error) {
     console.error('[prd-from-text] Error:', error);
-    const errorMsg = formatError(error, 'Failed to generate PRD from transcript');
+    const errorMsg = formatError(error, 'Failed to generate summary from transcript');
     await send(cardMessage(buildErrorCard(errorMsg, 'retryPrdFromText', { transcriptId })));
   }
 }
@@ -418,14 +476,15 @@ async function handleGeneratePrdFromUrl(send, joinUrl) {
 
     const { transcript, meetingSubject } = await getMeetingTranscript(joinUrl);
 
-    await send(cardMessage(buildProgressCard(`Got transcript for "${meetingSubject}". Generating PRD...`, 2, 3)));
+    await send(cardMessage(buildProgressCard(`Got transcript for "${meetingSubject}". Generating summary...`, 2, 3)));
 
-    const { prd } = await generatePRD(transcript);
+    const { summary } = await generateSummary(transcript);
 
-    const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    storage.set(prdId, prd);
+    // Store transcript for later PRD generation
+    const dataId = `data_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(dataId, { transcript, meetingSubject, urlId });
 
-    await send(cardMessage(buildPRDCard(prd, meetingSubject, prdId)));
+    await send(cardMessage(buildSummaryCard(summary, meetingSubject, dataId, 'url')));
   } catch (error) {
     console.error('[generate-prd] Error:', error?.statusCode || '', error?.message || error);
     if (error?.body) console.error('[generate-prd] Response body:', JSON.stringify(error.body).slice(0, 500));
@@ -434,7 +493,70 @@ async function handleGeneratePrdFromUrl(send, joinUrl) {
   }
 }
 
-async function handleGenerateTickets(send, data) {
+async function handleConfirmSummary(send, data, activity) {
+  try {
+    const storedData = storage.get(data.dataId);
+    if (!storedData) {
+      await send(cardMessage(buildErrorCard('Session data has expired. Please start again with /generate-prd or /prd-from-text.')));
+      return;
+    }
+
+    const { transcript, meetingSubject } = storedData;
+    const additionalNotes = data.additionalNotes || '';
+
+    await send(cardMessage(buildProgressCard('Generating PRD...', 1, 1)));
+
+    // Append additional notes to transcript if provided
+    const fullInput = additionalNotes
+      ? `${transcript}\n\n--- Additional Notes ---\n${additionalNotes}`
+      : transcript;
+
+    const { prd } = await generatePRD(fullInput);
+
+    const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(prdId, prd);
+
+    // Set active PRD editing session for the conversation
+    const conversationId = activity.conversation.id;
+    const activePrdKey = `activePrd_${conversationId}`;
+    storage.set(activePrdKey, { prdId, meetingSubject: meetingSubject || 'Manual Transcript' });
+
+    await send(cardMessage(buildPRDCard(prd, meetingSubject || 'Manual Transcript', prdId)));
+    console.log(`[confirmSummary] PRD generated, editing session active for conversation`);
+  } catch (error) {
+    console.error('[confirmSummary] Error:', error);
+    const errorMsg = formatError(error, 'Failed to generate PRD');
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+}
+
+async function handlePrdEdit(send, activePrdData, editInstruction, activePrdKey) {
+  try {
+    const { prdId, meetingSubject } = activePrdData;
+    const currentPrd = storage.get(prdId);
+    if (!currentPrd) {
+      storage.delete(activePrdKey);
+      await send(cardMessage(buildErrorCard('PRD data has expired. Please start again.')));
+      return;
+    }
+
+    await send(cardMessage(buildProgressCard('Applying your edits to the PRD...', 1, 1)));
+
+    const { prd: updatedPrd } = await editPRD(currentPrd, editInstruction);
+
+    // Update stored PRD
+    storage.set(prdId, updatedPrd);
+
+    await send(cardMessage(buildPRDCard(updatedPrd, meetingSubject, prdId)));
+    console.log(`[prdEdit] PRD updated with edit: "${editInstruction.substring(0, 50)}..."`);
+  } catch (error) {
+    console.error('[prdEdit] Error:', error);
+    const errorMsg = formatError(error, 'Failed to apply edit to PRD');
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+}
+
+async function handleGenerateTickets(send, data, activity) {
   try {
     const prd = storage.get(data.prdId);
     if (!prd) {
@@ -442,7 +564,14 @@ async function handleGenerateTickets(send, data) {
       return;
     }
 
-    await send(cardMessage(buildProgressCard('Generating Jira tickets from PRD...', 1, 2)));
+    // Clear PRD editing session since user is moving to tickets
+    if (activity) {
+      const conversationId = activity.conversation.id;
+      const activePrdKey = `activePrd_${conversationId}`;
+      storage.delete(activePrdKey);
+    }
+
+    await send(cardMessage(buildProgressCard('Generating Jira ticket drafts from PRD...', 1, 2)));
 
     const projectKey = data.projectKey || config.jiraProjectKey;
     const { tickets } = await generateTickets(prd, projectKey);
@@ -455,11 +584,140 @@ async function handleGenerateTickets(send, data) {
     const ticketsId = `tickets_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     storage.set(ticketsId, tickets);
 
-    await send(cardMessage(buildTicketsCard(tickets, projectKey, ticketsId)));
+    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, ticketsId)));
   } catch (error) {
     console.error('[generateTickets] Error:', error);
     const errorMsg = formatError(error, 'Failed to generate Jira tickets');
     await send(cardMessage(buildErrorCard(errorMsg, 'generateTickets', { prdId: data.prdId })));
+  }
+}
+
+async function handleShowEditMenu(send, data) {
+  try {
+    const tickets = storage.get(data.ticketsId);
+    if (!tickets) {
+      await send(cardMessage(buildErrorCard('Ticket data has expired. Please regenerate tickets from the PRD.')));
+      return;
+    }
+
+    await send(cardMessage(buildEditTicketMenuCard(tickets, data.ticketsId, data.projectKey)));
+  } catch (error) {
+    console.error('[showEditMenu] Error:', error);
+    const errorMsg = formatError(error, 'Failed to show edit menu');
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+}
+
+async function handleEditTicket(send, data) {
+  try {
+    const tickets = storage.get(data.ticketsId);
+    if (!tickets) {
+      await send(cardMessage(buildErrorCard('Ticket data has expired. Please regenerate tickets from the PRD.')));
+      return;
+    }
+
+    const ticketIndex = data.ticketIndex;
+    if (ticketIndex < 0 || ticketIndex >= tickets.length) {
+      await send(cardMessage(buildErrorCard('Invalid ticket index.')));
+      return;
+    }
+
+    await send(cardMessage(buildEditTicketCard(tickets[ticketIndex], ticketIndex, data.ticketsId, data.projectKey)));
+  } catch (error) {
+    console.error('[editTicket] Error:', error);
+    const errorMsg = formatError(error, 'Failed to load ticket for editing');
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+}
+
+async function handleSaveTicketEdit(send, data) {
+  try {
+    const tickets = storage.get(data.ticketsId);
+    if (!tickets) {
+      await send(cardMessage(buildErrorCard('Ticket data has expired. Please regenerate tickets from the PRD.')));
+      return;
+    }
+
+    const ticketIndex = data.ticketIndex;
+    if (ticketIndex < 0 || ticketIndex >= tickets.length) {
+      await send(cardMessage(buildErrorCard('Invalid ticket index.')));
+      return;
+    }
+
+    // Apply edits
+    const ticket = tickets[ticketIndex];
+    if (data.editTitle) {
+      ticket.fields.summary = data.editTitle;
+    }
+    if (data.editDescription !== undefined) {
+      ticket.fields.description = plainTextToAdf(data.editDescription);
+    }
+    if (data.editPriority) {
+      ticket.fields.priority = { name: data.editPriority };
+    }
+
+    // Save updated tickets
+    storage.set(data.ticketsId, tickets);
+
+    const projectKey = data.projectKey || config.jiraProjectKey;
+    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, data.ticketsId)));
+    console.log(`[saveTicketEdit] Ticket ${ticketIndex} updated: "${ticket.fields.summary}"`);
+  } catch (error) {
+    console.error('[saveTicketEdit] Error:', error);
+    const errorMsg = formatError(error, 'Failed to save ticket changes');
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+}
+
+async function handleCancelTicketEdit(send, data) {
+  try {
+    const tickets = storage.get(data.ticketsId);
+    if (!tickets) {
+      await send(cardMessage(buildErrorCard('Ticket data has expired. Please regenerate tickets from the PRD.')));
+      return;
+    }
+
+    const projectKey = data.projectKey || config.jiraProjectKey;
+    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, data.ticketsId)));
+  } catch (error) {
+    console.error('[cancelTicketEdit] Error:', error);
+    const errorMsg = formatError(error, 'Failed to return to ticket drafts');
+    await send(cardMessage(buildErrorCard(errorMsg)));
+  }
+}
+
+async function handleSubmitSelectedToJira(send, data) {
+  try {
+    const allTickets = storage.get(data.ticketsId);
+    if (!allTickets) {
+      await send(cardMessage(buildErrorCard('Ticket data has expired. Please regenerate tickets from the PRD.')));
+      return;
+    }
+
+    // Filter tickets based on toggle values (include_0, include_1, etc.)
+    const selectedTickets = allTickets.filter((_, i) => {
+      const toggleValue = data[`include_${i}`];
+      // Default to included if toggle value not present (cards may not send default values)
+      return toggleValue !== 'false';
+    });
+
+    if (selectedTickets.length === 0) {
+      await send(cardMessage(buildErrorCard('No tickets selected. Please toggle on at least one ticket to push to Jira.')));
+      return;
+    }
+
+    await send(cardMessage(buildProgressCard(
+      `Submitting ${selectedTickets.length} of ${allTickets.length} tickets to Jira...`,
+      1, 1
+    )));
+
+    const results = await submitToJira(selectedTickets);
+
+    await send(cardMessage(buildJiraResultCard(results)));
+  } catch (error) {
+    console.error('[submitSelectedToJira] Error:', error);
+    const errorMsg = formatError(error, 'Failed to submit tickets to Jira');
+    await send(cardMessage(buildErrorCard(errorMsg, 'submitSelectedToJira', { ticketsId: data.ticketsId, projectKey: data.projectKey })));
   }
 }
 
@@ -471,7 +729,7 @@ async function handleSubmitToJira(send, data) {
       return;
     }
 
-    await send(cardMessage(buildProgressCard('Submitting tickets to Jira...', 2, 2)));
+    await send(cardMessage(buildProgressCard('Submitting tickets to Jira...', 1, 1)));
 
     const results = await submitToJira(tickets);
 

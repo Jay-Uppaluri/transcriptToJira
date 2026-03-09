@@ -136,6 +136,54 @@ David Kim: I'll spec all of this in the API contracts doc by March 22. Let's pla
 Priya Patel: Sounds good. I'll have the full Figma file done by Friday.
 
 David Kim: Alright, we've got a solid plan. Let's execute.`
+  },
+  {
+    title: "United Airlines – Mobile Experience: Boarding Education Cards — March 9",
+    transcript: `Tanya Brooks: Alright, let's get started. We're here to walk through the boarding education cards initiative for Travel Mode. Sarah, do you want to kick us off with the overview?
+
+Sarah Chen: Sure. So the core idea here is that we're introducing a set of sequential educational cards within Travel Mode on the mobile app. The goal is to guide passengers through day-of-travel action items — things like what to bring to the gate, how boarding works, how to scan, how to stow luggage. We want to reduce anxiety for passengers who may not be frequent flyers or who are unfamiliar with our process.
+
+Jason Woodward: And just to add some context from the CX side, we hear a lot from gate agents that passengers show up unsure about gate-checking procedures, what lane to use, whether they need a boarding pass or if biometrics will work. These cards are meant to front-load that information so customers feel prepared before they even get to the gate.
+
+Tanya Brooks: Great. Sarah, can you walk us through the card sequence?
+
+Sarah Chen: Absolutely. So when a passenger enters Travel Mode, they'll see a series of cards in a specific order. First up is gate-checking information. Then, depending on eligibility on that PNR, we break out into two additional cards — one for strollers and one for wheelchairs. After that, we move into materials to board, how we board, how to scan, and how to stow. Seven cards total.
+
+Marcus Rivera: I can go through each one in a bit more detail. Card 1 is Wheelchairs — that's for passengers who have wheelchair assistance on their record. Card 2 is Strollers, same idea, only shown if relevant. Card 3 is Gate Checking Information, and this one actually has two variants. If you're on a United Express flight, you'll see the UAX gate-checked bags version. If you're on mainline United, you see the UA version. The content differs slightly because the process is a little different.
+
+Priya Patel: Quick question on that — are we determining UAX versus UA based on the operating carrier on the segment?
+
+Sarah Chen: Correct, yes. It keys off the operating carrier.
+
+Marcus Rivera: Moving on — Card 4 is Materials to Board. This tells the passenger what they need to have ready. Right now that covers boarding pass and passport, if it's an international segment. Card 5 is How We Board, which explains group boarding and the lane system — Lanes 1 and 2. Card 6 is How to Scan, which branches into biometrics if the airport supports it, or the standard boarding pass scan. And then Card 7 is How to Stow, which covers personal item placement for both UA and UAX aircraft, vertical stow for carry-ons, and horizontal stow for carry-ons.
+
+Tanya Brooks: So not every passenger sees every card?
+
+Sarah Chen: Right. The cards are contextual. A passenger might see the UA gate-checked card, boarding pass, passport, biometrics, and vertical stow carry-on. If they also have a wheelchair or stroller on the PNR, those cards show up too. But if none of that applies, those cards just don't appear.
+
+Jason Woodward: That was a big design principle for us. We didn't want to overwhelm people with information that isn't relevant to their trip.
+
+Tanya Brooks: Makes sense. Marcus, what about the animations?
+
+Marcus Rivera: Each card has a collapsed and expanded state. In the collapsed view, you see a summary — just enough to know what the card is about. When you tap into it, you get the full content with animations that walk you through the process visually. We've been testing a few animation styles and the response has been positive. They're simple, instructional — think short looping illustrations rather than video.
+
+Priya Patel: From an engineering standpoint, the animations are lightweight. We're rendering them natively so there's no load time or buffering. They play inline within the card.
+
+Tanya Brooks: And timing-wise — when do passengers start seeing these?
+
+Sarah Chen: As soon as they're in Travel Mode. That can be well before their trip. So if someone checks the app the night before, they'll see the cards. And importantly, passengers will see cards for all segments in their line of flight, not just the first one. So if you're connecting through Denver on a UAX regional and then continuing on mainline to San Francisco, you'd see the relevant cards for both legs.
+
+Jason Woodward: That's a big deal for connecting passengers. The gate-check process can be different on the regional side, and a lot of customers don't realize that until they're standing at the gate.
+
+Tanya Brooks: Alright. Any blockers or open items?
+
+Priya Patel: We're in good shape on the engineering side. The card framework is built and we're plugging in the content now. Main dependency is final animation assets from the design team.
+
+Marcus Rivera: Those are on track. We should have final assets delivered by end of next week.
+
+Sarah Chen: Only other thing I'd flag is that we'll want to coordinate with the airport operations team on the gate-checking content to make sure we're aligned on the latest procedures, especially for UAX.
+
+Tanya Brooks: Noted. I'll set up that touchpoint. Anything else? Alright, good meeting everyone. Let's reconvene next week for a progress check.`
   }
 ];
 
@@ -147,6 +195,15 @@ function getDemoTranscriptsCombined() {
 
 function detectIntent(text) {
   const lower = text.toLowerCase();
+
+  // Check for "most recent meeting" / "latest meeting" PRD request
+  if (
+    (lower.includes('recent') || lower.includes('latest') || lower.includes('last')) &&
+    (lower.includes('meeting') || lower.includes('transcript')) &&
+    (lower.includes('prd') || lower.includes('document') || lower.includes('summarize') || lower.includes('summary') || lower.includes('recap'))
+  ) {
+    return 'recent_meeting_prd';
+  }
 
   // Check for meeting/PRD creation intent
   if (
@@ -387,6 +444,10 @@ app.on('message', async ({ send, stream, activity }) => {
       await send(cardMessage(buildHelpCard()));
       break;
 
+    case 'recent_meeting_prd':
+      handleRecentMeetingPrd(send, conversationId).catch(err => console.error('[recentMeetingPrd] Error:', err));
+      break;
+
     case 'summarize_meetings':
       handleSummarizeMeetings(send, conversationId).catch(err => console.error('[summarize] Error:', err));
       break;
@@ -469,6 +530,29 @@ app.on('message', async ({ send, stream, activity }) => {
 });
 
 // ─── Conversational Flow Handlers ───
+
+async function handleRecentMeetingPrd(send, conversationId) {
+  try {
+    const recentMeeting = DEMO_MEETINGS[DEMO_MEETINGS.length - 1];
+    await send(cardMessage(buildProgressCard(`Pulling up your most recent meeting: **${recentMeeting.title}**...`, 1, 3)));
+
+    const { summary } = await generateSummary(recentMeeting.transcript);
+
+    const ctx = getConversationContext(conversationId);
+    ctx.stage = 'summary_done';
+    ctx.transcript = recentMeeting.transcript;
+    ctx.summary = summary;
+    ctx.additionalContext = [];
+    setConversationContext(conversationId, ctx);
+
+    const response = `📋 **Most Recent Meeting: ${recentMeeting.title}**\n\n---\n\n${summary}\n\n---\n\n💬 **Want me to draft a PRD from this?** Just say **"draft the PRD"** or add any additional context first.`;
+    await send(new MessageActivity(response));
+    console.log(`[recentMeetingPrd] Summary generated for conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[recentMeetingPrd] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to process most recent meeting'))));
+  }
+}
 
 async function handleSummarizeMeetings(send, conversationId) {
   try {

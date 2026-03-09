@@ -138,52 +138,52 @@ Priya Patel: Sounds good. I'll have the full Figma file done by Friday.
 David Kim: Alright, we've got a solid plan. Let's execute.`
   },
   {
-    title: "United Airlines – Mobile Experience: Boarding Education Cards — March 9",
-    transcript: `Tanya Brooks: Alright, let's get started. We're here to walk through the boarding education cards initiative for Travel Mode. Sarah, do you want to kick us off with the overview?
+    title: "Meridian Health Systems – Patient Portal: Visit Preparation Cards — March 9",
+    transcript: `Liam O'Brien: Alright, let's get started. We're here to walk through the visit preparation cards initiative for the patient portal app. Angela, do you want to kick us off with the overview?
 
-Sarah Chen: Sure. So the core idea here is that we're introducing a set of sequential educational cards within Travel Mode on the mobile app. The goal is to guide passengers through day-of-travel action items — things like what to bring to the gate, how boarding works, how to scan, how to stow luggage. We want to reduce anxiety for passengers who may not be frequent flyers or who are unfamiliar with our process.
+Angela Torres: Sure. So the core idea here is that we're introducing a set of sequential educational cards within the Upcoming Visit view on the mobile app. The goal is to guide patients through pre-appointment action items — things like what documents to bring, how check-in works, where to park, where to go once they're inside the building. We want to reduce anxiety for patients who may be visiting a new facility or dealing with an unfamiliar procedure.
 
-Jason Woodward: And just to add some context from the CX side, we hear a lot from gate agents that passengers show up unsure about gate-checking procedures, what lane to use, whether they need a boarding pass or if biometrics will work. These cards are meant to front-load that information so customers feel prepared before they even get to the gate.
+Natalie Greer: And just to add some context from the patient experience side, we hear a lot from front desk staff that patients arrive unsure about which entrance to use, whether they need a referral letter, or how the self-check-in kiosks work. These cards are meant to front-load that information so patients feel prepared before they even leave the house.
 
-Tanya Brooks: Great. Sarah, can you walk us through the card sequence?
+Liam O'Brien: Great. Angela, can you walk us through the card sequence?
 
-Sarah Chen: Absolutely. So when a passenger enters Travel Mode, they'll see a series of cards in a specific order. First up is gate-checking information. Then, depending on eligibility on that PNR, we break out into two additional cards — one for strollers and one for wheelchairs. After that, we move into materials to board, how we board, how to scan, and how to stow. Seven cards total.
+Angela Torres: Absolutely. So when a patient has an upcoming visit, they'll see a series of cards in a specific order. First up is check-in information. Then, depending on what's flagged in the patient record, we break out into two additional cards — one for interpreter services and one for mobility assistance. After that, we move into documents to bring, how check-in works, how to use the kiosk, and facility wayfinding. Seven cards total.
 
-Marcus Rivera: I can go through each one in a bit more detail. Card 1 is Wheelchairs — that's for passengers who have wheelchair assistance on their record. Card 2 is Strollers, same idea, only shown if relevant. Card 3 is Gate Checking Information, and this one actually has two variants. If you're on a United Express flight, you'll see the UAX gate-checked bags version. If you're on mainline United, you see the UA version. The content differs slightly because the process is a little different.
+David Kwan: I can go through each one in a bit more detail. Card 1 is Mobility Assistance — that's for patients who have accessibility needs noted in their chart. Card 2 is Interpreter Services, same idea, only shown if there's a language preference on file. Card 3 is Check-In Information, and this one actually has two variants. If you're visiting one of our outpatient clinics, you'll see the clinic check-in version. If you're going to the main hospital campus, you see the hospital version. The process differs a bit because the clinic locations use a different intake system.
 
-Priya Patel: Quick question on that — are we determining UAX versus UA based on the operating carrier on the segment?
+Ravi Deshmukh: Quick question on that — are we determining clinic versus hospital based on the facility code tied to the appointment?
 
-Sarah Chen: Correct, yes. It keys off the operating carrier.
+Angela Torres: Correct, yes. It keys off the facility code in the scheduling system.
 
-Marcus Rivera: Moving on — Card 4 is Materials to Board. This tells the passenger what they need to have ready. Right now that covers boarding pass and passport, if it's an international segment. Card 5 is How We Board, which explains group boarding and the lane system — Lanes 1 and 2. Card 6 is How to Scan, which branches into biometrics if the airport supports it, or the standard boarding pass scan. And then Card 7 is How to Stow, which covers personal item placement for both UA and UAX aircraft, vertical stow for carry-ons, and horizontal stow for carry-ons.
+David Kwan: Moving on — Card 4 is Documents to Bring. This tells the patient what they need to have ready. Right now that covers insurance card, photo ID, and referral letter if the visit type requires one. Card 5 is How Check-In Works, which explains the arrival process and the difference between the staffed desk and the self-service line. Card 6 is How to Use the Kiosk, which branches into the QR code scan if the facility supports it, or the manual entry process. And then Card 7 is Facility Wayfinding, which covers parking — both garage and surface lot — elevator access to the correct floor, and department signage.
 
-Tanya Brooks: So not every passenger sees every card?
+Liam O'Brien: So not every patient sees every card?
 
-Sarah Chen: Right. The cards are contextual. A passenger might see the UA gate-checked card, boarding pass, passport, biometrics, and vertical stow carry-on. If they also have a wheelchair or stroller on the PNR, those cards show up too. But if none of that applies, those cards just don't appear.
+Angela Torres: Right. The cards are contextual. A patient might see the clinic check-in card, insurance card, photo ID, QR code scan, and garage parking. If they also have interpreter services or mobility assistance flagged, those cards show up too. But if none of that applies, those cards just don't appear.
 
-Jason Woodward: That was a big design principle for us. We didn't want to overwhelm people with information that isn't relevant to their trip.
+Natalie Greer: That was a big design principle for us. We didn't want to overwhelm people with information that isn't relevant to their visit.
 
-Tanya Brooks: Makes sense. Marcus, what about the animations?
+Liam O'Brien: Makes sense. David, what about the animations?
 
-Marcus Rivera: Each card has a collapsed and expanded state. In the collapsed view, you see a summary — just enough to know what the card is about. When you tap into it, you get the full content with animations that walk you through the process visually. We've been testing a few animation styles and the response has been positive. They're simple, instructional — think short looping illustrations rather than video.
+David Kwan: Each card has a collapsed and expanded state. In the collapsed view, you see a summary — just enough to know what the card is about. When you tap into it, you get the full content with animations that walk you through the process visually. We've been testing a few animation styles and the response has been positive. They're simple, instructional — think short looping illustrations rather than video.
 
-Priya Patel: From an engineering standpoint, the animations are lightweight. We're rendering them natively so there's no load time or buffering. They play inline within the card.
+Ravi Deshmukh: From an engineering standpoint, the animations are lightweight. We're rendering them natively so there's no load time or buffering. They play inline within the card.
 
-Tanya Brooks: And timing-wise — when do passengers start seeing these?
+Liam O'Brien: And timing-wise — when do patients start seeing these?
 
-Sarah Chen: As soon as they're in Travel Mode. That can be well before their trip. So if someone checks the app the night before, they'll see the cards. And importantly, passengers will see cards for all segments in their line of flight, not just the first one. So if you're connecting through Denver on a UAX regional and then continuing on mainline to San Francisco, you'd see the relevant cards for both legs.
+Angela Torres: As soon as the appointment is confirmed in the system. That could be days or even weeks before the visit. So if someone checks the app the night before, they'll see the cards. And importantly, patients will see cards for all appointments in a given day, not just the first one. So if you have lab work at the outpatient clinic in the morning and then a specialist visit at the main hospital in the afternoon, you'd see the relevant cards for both.
 
-Jason Woodward: That's a big deal for connecting passengers. The gate-check process can be different on the regional side, and a lot of customers don't realize that until they're standing at the gate.
+Natalie Greer: That's a big deal for patients with multiple appointments. The check-in process can be completely different between a clinic and the main campus, and a lot of patients don't realize that until they're standing in the wrong lobby.
 
-Tanya Brooks: Alright. Any blockers or open items?
+Liam O'Brien: Alright. Any blockers or open items?
 
-Priya Patel: We're in good shape on the engineering side. The card framework is built and we're plugging in the content now. Main dependency is final animation assets from the design team.
+Ravi Deshmukh: We're in good shape on the engineering side. The card framework is built and we're plugging in the content now. Main dependency is final animation assets from the design team.
 
-Marcus Rivera: Those are on track. We should have final assets delivered by end of next week.
+David Kwan: Those are on track. We should have final assets delivered by end of next week.
 
-Sarah Chen: Only other thing I'd flag is that we'll want to coordinate with the airport operations team on the gate-checking content to make sure we're aligned on the latest procedures, especially for UAX.
+Angela Torres: Only other thing I'd flag is that we'll want to coordinate with the facilities management team on the wayfinding content to make sure we're aligned on the latest signage and parking changes, especially for the outpatient clinics.
 
-Tanya Brooks: Noted. I'll set up that touchpoint. Anything else? Alright, good meeting everyone. Let's reconvene next week for a progress check.`
+Liam O'Brien: Noted. I'll set up that touchpoint. Anything else? Alright, good meeting everyone. Let's reconvene next week for a progress check.`
   }
 ];
 

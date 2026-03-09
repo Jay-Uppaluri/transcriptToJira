@@ -75,6 +75,7 @@ function card(body, actions) {
     type: 'AdaptiveCard',
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
     version: '1.5',
+    msteams: { width: 'Full' },
     body,
   };
   if (actions && actions.length) content.actions = actions;
@@ -491,6 +492,12 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
       const priorityIcon = priority === 'High' || priority === 'Highest' ? '🔴'
         : priority === 'Low' || priority === 'Lowest' ? '🔵' : '🟡';
 
+      const description = adfToPlainText(t.fields?.description);
+      const descriptionPreview = description.length > 150
+        ? description.substring(0, 150) + '...'
+        : description;
+
+      // Row 1: Checkbox + Title + Priority (side by side)
       body.push({
         type: 'ColumnSet',
         spacing: 'Small',
@@ -513,7 +520,7 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
             width: 'stretch',
             items: [{
               type: 'TextBlock',
-              text: t.fields?.summary || 'Untitled',
+              text: `**${t.fields?.summary || 'Untitled'}**`,
               wrap: true,
             }],
             verticalContentAlignment: 'Center',
@@ -531,6 +538,18 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
           },
         ],
       });
+
+      // Row 2: Description (indented under the title)
+      if (descriptionPreview) {
+        body.push({
+          type: 'TextBlock',
+          text: descriptionPreview,
+          wrap: true,
+          size: 'Small',
+          isSubtle: true,
+          spacing: 'None',
+        });
+      }
     }
   }
 

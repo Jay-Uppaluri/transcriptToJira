@@ -356,8 +356,11 @@ app.on('message', async ({ send, stream, activity }) => {
     }
   }
 
-  // ─── Only respond when @mentioned in group chats ───
-  if (!mentioned) return;
+  // ─── Only require @mention if conversation has no active context ───
+  if (!mentioned && ctx.stage === 'idle') return;
+
+  // If not mentioned but context is active, treat as if mentioned (auto-reply in active threads)
+  const effectivelyMentioned = mentioned || ctx.stage !== 'idle';
 
   // ─── Legacy command support ───
   if (cleanText.startsWith('/prd-from-text')) {

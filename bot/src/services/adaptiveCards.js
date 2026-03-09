@@ -497,10 +497,13 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
         ? description.substring(0, 150) + '...'
         : description;
 
-      // Row 1: Checkbox + Title + Priority (side by side)
-      body.push({
+      // Ticket container with emphasis style for visual separation
+      const ticketItems = [];
+
+      // Row: Checkbox + Title + Description (same column) + Priority
+      ticketItems.push({
         type: 'ColumnSet',
-        spacing: 'Small',
+        spacing: 'None',
         columns: [
           {
             type: 'Column',
@@ -518,11 +521,21 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
           {
             type: 'Column',
             width: 'stretch',
-            items: [{
-              type: 'TextBlock',
-              text: `**${t.fields?.summary || 'Untitled'}**`,
-              wrap: true,
-            }],
+            items: [
+              {
+                type: 'TextBlock',
+                text: `**${t.fields?.summary || 'Untitled'}**`,
+                wrap: true,
+              },
+              ...(descriptionPreview ? [{
+                type: 'TextBlock',
+                text: descriptionPreview,
+                wrap: true,
+                size: 'Small',
+                isSubtle: true,
+                spacing: 'None',
+              }] : []),
+            ],
             verticalContentAlignment: 'Center',
           },
           {
@@ -539,17 +552,14 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
         ],
       });
 
-      // Row 2: Description (indented under the title)
-      if (descriptionPreview) {
-        body.push({
-          type: 'TextBlock',
-          text: descriptionPreview,
-          wrap: true,
-          size: 'Small',
-          isSubtle: true,
-          spacing: 'None',
-        });
-      }
+      body.push({
+        type: 'Container',
+        style: 'emphasis',
+        bleed: false,
+        roundedCorners: true,
+        spacing: 'Medium',
+        items: ticketItems,
+      });
     }
   }
 

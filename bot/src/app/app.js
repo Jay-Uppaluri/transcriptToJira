@@ -10,7 +10,7 @@ const config = require("../config");
 
 // Services
 const { getMeetingTranscript } = require('../services/graphService');
-const { generatePRD, generateSummary, editPRD } = require('../services/prdService');
+const { generatePRD, generateSummary, editPRD, countWords, LONG_TRANSCRIPT_THRESHOLD } = require('../services/prdService');
 const { generateTickets: generateWorkItems, submitTickets: submitToAdo, getProviderInfo } = require('../services/ticketProviderService');
 const {
   buildPRDCard,
@@ -524,7 +524,7 @@ async function handleRecentMeetingPrd(send, conversationId) {
     const recentMeeting = DEMO_MEETINGS[DEMO_MEETINGS.length - 1];
     await send(cardMessage(buildProgressCard(`Pulling up your most recent meeting: **${recentMeeting.title}**...`, 1, 3)));
 
-    const { summary } = await generateSummary(recentMeeting.transcript);
+    const { summary } = await generateSummary(recentMeeting.transcript, {});
 
     const ctx = getConversationContext(conversationId);
     ctx.stage = 'summary_done';
@@ -547,7 +547,19 @@ async function handleSummarizeMeetings(send, conversationId) {
     await send(cardMessage(buildProgressCard('Pulling up your recent meetings and generating a summary...', 1, 2)));
 
     const combinedTranscript = getDemoTranscriptsCombined();
-    const { summary } = await generateSummary(combinedTranscript);
+    const wordCount = countWords(combinedTranscript);
+
+    // For long transcripts, send progress updates via adaptive cards
+    let lastProgressMsg = null;
+    const onProgress = wordCount > LONG_TRANSCRIPT_THRESHOLD ? async (progress) => {
+      // Only send card updates for new phase messages (avoid spamming)
+      if (progress.message && progress.message !== lastProgressMsg) {
+        lastProgressMsg = progress.message;
+        try { await send(cardMessage(buildProgressCard(progress.message, progress.chunkIndex ? progress.chunkIndex + 1 : 1, progress.totalChunks || 1))); } catch (_) {}
+      }
+    } : undefined;
+
+    const { summary } = await generateSummary(combinedTranscript, { onProgress });
 
     const meetingList = DEMO_MEETINGS.map(m => `• **${m.title}**`).join('\n');
 
@@ -577,7 +589,16 @@ async function handleDraftPrd(send, ctx, conversationId) {
       fullInput += '\n\n--- Additional Context from Team ---\n' + ctx.additionalContext.join('\n\n');
     }
 
-    const { prd } = await generatePRD(fullInput);
+    const wordCount = countWords(fullInput);
+    let lastProgressMsg = null;
+    const onProgress = wordCount > LONG_TRANSCRIPT_THRESHOLD ? async (progress) => {
+      if (progress.message && progress.message !== lastProgressMsg) {
+        lastProgressMsg = progress.message;
+        try { await send(cardMessage(buildProgressCard(progress.message, progress.chunkIndex ? progress.chunkIndex + 1 : 1, progress.totalChunks || 1))); } catch (_) {}
+      }
+    } : undefined;
+
+    const { prd } = await generatePRD(fullInput, { onProgress });
 
     const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     storage.set(prdId, prd);
@@ -682,7 +703,16 @@ async function handleConfirmSummary(send, data, activity) {
     await send(cardMessage(buildProgressCard('Generating PRD...', 1, 1)));
 
     const fullInput = additionalNotes ? `${transcript}\n\n--- Additional Notes ---\n${additionalNotes}` : transcript;
-    const { prd } = await generatePRD(fullInput);
+    const wordCount = countWords(fullInput);
+    let lastProgressMsg = null;
+    const onProgress = wordCount > LONG_TRANSCRIPT_THRESHOLD ? async (progress) => {
+      if (progress.message && progress.message !== lastProgressMsg) {
+        lastProgressMsg = progress.message;
+        try { await send(cardMessage(buildProgressCard(progress.message, progress.chunkIndex ? progress.chunkIndex + 1 : 1, progress.totalChunks || 1))); } catch (_) {}
+      }
+    } : undefined;
+
+    const { prd } = await generatePRD(fullInput, { onProgress });
 
     const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     storage.set(prdId, prd);

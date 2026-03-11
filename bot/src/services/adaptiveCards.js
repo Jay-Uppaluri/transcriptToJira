@@ -1,4 +1,6 @@
 const config = require('../config');
+const { getProviderInfo } = require('../../../shared/ticketProvider.cjs');
+const providerInfo = getProviderInfo();
 
 // ─── Color & Icon Constants ───
 const ACCENT = 'Accent';
@@ -29,8 +31,7 @@ const ICON = {
 
 const WORK_ITEM_ICON = {
   Epic: ICON.epic,
-  Feature: ICON.feature,
-  'User Story': ICON.story,
+  Issue: '⚡',
   Task: ICON.task,
   Bug: ICON.bug,
 };
@@ -91,10 +92,10 @@ function card(body, actions) {
 
 function buildWelcomeCard() {
   return card([
-    ...headerBlock(ICON.wave, 'Welcome to Transcript → Azure DevOps!', null),
+    ...headerBlock(ICON.wave, `Welcome to Transcript → ${providerInfo.displayName}!`, null),
     {
       type: 'TextBlock',
-      text: 'I turn meeting transcripts into **professional PRDs** and **Azure DevOps work items** — in seconds.',
+      text: `I turn meeting transcripts into **professional PRDs** and **${providerInfo.displayName} ${providerInfo.itemLabelPlural.toLowerCase()}** — in seconds.`,
       wrap: true,
       spacing: 'Medium',
     },
@@ -154,13 +155,13 @@ function buildHelpCard() {
     },
     {
       type: 'TextBlock',
-      text: `1. Paste transcript or provide meeting URL → Review the **Summary**\n2. Confirm summary → I generate a **PRD**\n3. Chat to **edit the PRD** until you're happy\n4. Click **Generate Work Items** → Review **drafts**\n5. Edit work items, toggle off any you don't want → **Push to Azure DevOps**\n\nYou can also just chat with me for general questions.`,
+      text: `1. Paste transcript or provide meeting URL → Review the **Summary**\n2. Confirm summary → I generate a **PRD**\n3. Chat to **edit the PRD** until you're happy\n4. Click **Generate ${providerInfo.itemLabelPlural}** → Review **drafts**\n5. Edit ${providerInfo.itemLabelPlural.toLowerCase()}, toggle off any you don't want → **Push to ${providerInfo.displayName}**\n\nYou can also just chat with me for general questions.`,
       wrap: true,
       spacing: 'Small',
     },
     {
       type: 'TextBlock',
-      text: `${ICON.sparkle} *Powered by GPT-4o • Azure DevOps: ${config.adoProject || '(not configured)'}*`,
+      text: `${ICON.sparkle} *Powered by GPT-4o • ${providerInfo.displayName}: ${config.adoProject || '(not configured)'}*`,
       wrap: true,
       spacing: 'Medium',
       isSubtle: true,
@@ -375,7 +376,7 @@ function buildPRDCard(prdContent, meetingSubject, prdId) {
   });
   body.push({
     type: 'TextBlock',
-    text: `${ICON.ticket} When you're happy with the PRD, generate Azure DevOps work items:`,
+    text: `${ICON.ticket} When you're happy with the PRD, generate ${providerInfo.displayName} ${providerInfo.itemLabelPlural.toLowerCase()}:`,
     wrap: true,
     spacing: 'Medium',
     isSubtle: true,
@@ -546,7 +547,7 @@ function buildWorkItemDraftsCard(workItems, workItemsId) {
   body.push(divider());
   body.push({
     type: 'TextBlock',
-    text: `Target: **${config.adoProject || 'Azure DevOps'}**`,
+    text: `Target: **${config.adoProject || providerInfo.displayName}**`,
     isSubtle: true,
     spacing: 'Medium',
     size: 'Small',
@@ -560,7 +561,7 @@ function buildWorkItemDraftsCard(workItems, workItemsId) {
     },
     {
       type: 'Action.Submit',
-      title: `${ICON.link} Push Selected to Azure DevOps`,
+      title: `${ICON.link} Push Selected to ${providerInfo.displayName}`,
       data: { action: 'submitSelectedToAdo', workItemsId },
       style: 'positive',
     },
@@ -644,8 +645,7 @@ function buildEditWorkItemCard(workItem, workItemIndex, workItemsId) {
       value: type,
       choices: [
         { title: '🏔️ Epic', value: 'Epic' },
-        { title: '⭐ Feature', value: 'Feature' },
-        { title: '📖 User Story', value: 'User Story' },
+        { title: '⚡ Issue', value: 'Issue' },
         { title: '✏️ Task', value: 'Task' },
         { title: '🐛 Bug', value: 'Bug' },
       ],
@@ -683,7 +683,7 @@ function buildAdoResultCard(results) {
   const body = [
     ...headerBlock(
       allGood ? ICON.check : ICON.error,
-      allGood ? 'All Work Items Created!' : 'Azure DevOps Submission Complete',
+      allGood ? `All ${providerInfo.itemLabelPlural} Created!` : `${providerInfo.displayName} Submission Complete`,
       `${created} of ${total} work items created successfully`
     ),
     divider(),

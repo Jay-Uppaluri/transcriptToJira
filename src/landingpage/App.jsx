@@ -161,7 +161,7 @@ export default function App() {
 
           <FadeInSection delay="150ms">
             <p className="text-xl text-[#787774] mb-10 max-w-2xl mx-auto leading-relaxed">
-              The agentic workflow that listens to your Teams meetings, drafts perfect product requirements, and syncs seamlessly with Jira. Idea to execution, without the busywork.
+              The agentic workflow that listens to your Teams meetings, drafts perfect product requirements, and syncs seamlessly with your project tracker. Idea to execution, without the busywork.
             </p>
           </FadeInSection>
 
@@ -259,9 +259,9 @@ export default function App() {
               <div className="w-24 h-24 bg-white rounded-[6px] border border-[#e9e8e4] flex items-center justify-center mb-6 group hover:-translate-y-2 transition-transform duration-300">
                 <KanbanSquare className="w-10 h-10 text-[#37352f] group-hover:scale-110 transition-transform duration-300" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">3. Jira Execution</h3>
+              <h3 className="text-xl font-semibold mb-3">3. Seamless Execution</h3>
               <p className="text-[#787774] leading-relaxed">
-                Approved requirements instantly generate Jira epics and tickets. Changes in Jira? They sync right back to the PRD.
+                Approved requirements instantly generate epics and work items in your project tracker. Changes there? They sync right back to the PRD.
               </p>
             </FadeInSection>
           </div>
@@ -278,13 +278,13 @@ export default function App() {
                 constantly in sync.
               </h2>
               <p className="text-lg text-[#787774] mb-8 leading-relaxed">
-                Forget manually copying text from a Word document to a Jira ticket. Cortex establishes a bi-directional living link between your product requirements and developer tasks.
+                Forget manually copying text from a Word document to a work item. Cortex establishes a bi-directional living link between your product requirements and developer tasks.
               </p>
 
               <ul className="space-y-5">
                 {[
-                  "Edit the PRD, and Jira tickets update automatically.",
-                  "Developers adjust scope in Jira, your PRD reflects the change.",
+                  "Edit the PRD, and work items update automatically.",
+                  "Developers adjust scope in the tracker, your PRD reflects the change.",
                   "Full version history and audit trails for complete visibility."
                 ].map((item, i) => (
                   <li key={i} className="flex items-start gap-3">

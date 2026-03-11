@@ -11,11 +11,15 @@ import PRDDocument from './components/prd/PRDDocument.jsx';
 import TicketView from './components/tickets/TicketView.jsx';
 import useComments from './hooks/useComments.js';
 import { authHeaders } from './utils/api.js';
+import useProvider from './hooks/useProvider.js';
 
 const API = '/api';
 const fetchOpts = { credentials: 'include' };
 
 export default function App() {
+  // Provider info
+  const provider = useProvider();
+
   // Auth state
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -211,10 +215,10 @@ export default function App() {
     setLoading(false);
   }
 
-  async function submitToJira() {
+  async function submitTickets() {
     setSubmitting(true);
     try {
-      const res = await fetch(`${API}/submit-to-jira`, {
+      const res = await fetch(`${API}/submit-tickets`, {
         method: 'POST',
         headers: authHeaders(token),
         body: JSON.stringify({ tickets }),
@@ -291,6 +295,7 @@ export default function App() {
           connection={connection}
           connectionLoading={connectionLoading}
           onDisconnectJira={disconnectJira}
+          provider={provider}
         />
 
         <div className="flex-1 overflow-y-auto">
@@ -310,7 +315,7 @@ export default function App() {
               {sidebarSection === 'documents' ? (
                 <PRDList token={token} onNewPRD={handleNewPRD} onOpenPRD={openPRD} />
               ) : sidebarSection === 'vtt-upload' ? (
-                <VTTUpload token={token} connection={connection} />
+                <VTTUpload token={token} connection={connection} provider={provider} />
               ) : (
                 <TranscriptList onOpenTranscript={openTranscript} />
               )}
@@ -357,7 +362,8 @@ export default function App() {
                 submitResult={submitResult}
                 submittedSiteUrl={submittedSiteUrl}
                 currentUser={user}
-                onSubmitToJira={submitToJira}
+                onSubmitTickets={submitTickets}
+                provider={provider}
                 onBack={() => setView('prd')}
               />
           )}

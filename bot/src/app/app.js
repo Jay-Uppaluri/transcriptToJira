@@ -11,7 +11,7 @@ const config = require("../config");
 // Services
 const { getMeetingTranscript } = require('../services/graphService');
 const { generatePRD, generateSummary, editPRD } = require('../services/prdService');
-const { generateWorkItems, submitToAdo } = require('../services/adoTicketService');
+const { generateTickets: generateWorkItems, submitTickets: submitToAdo, getProviderInfo } = require('../services/ticketProviderService');
 const {
   buildPRDCard,
   buildSummaryCard,
@@ -293,7 +293,8 @@ function formatError(error, context) {
     return `⚠️ **AI Service Temporarily Unavailable**\n\n${context}. Please try again in a moment.`;
   }
   if (msg.includes('Azure DevOps') || msg.includes('Unauthorized') || msg.includes('401') || msg.includes('ADO')) {
-    return `⚠️ **Azure DevOps Connection Issue**\n\n${context}. Please check configuration.`;
+    const _info = getProviderInfo();
+    return `⚠️ **${_info.displayName} Connection Issue**\n\n${context}. Please check configuration.`;
   }
   const detail = msg && msg !== 'undefined' ? `\n\n*Detail:* ${msg}` : '';
   return `⚠️ **Something went wrong**\n\n${context}.${detail}`;
@@ -450,7 +451,7 @@ app.on('message', async ({ send, stream, activity }) => {
         await send(new MessageActivity(
           "I've already generated a PRD. You can:\n" +
           "- Tell me what to **edit** (e.g., \"add a security section\")\n" +
-          "- Say **\"Generate Work Items\"** to create Azure DevOps work items from it"
+          `- Say **"Generate Work Items"** to create ${getProviderInfo().displayName} work items from it`
         ));
       } else {
         handleSummarizeMeetings(send, conversationId).catch(err => console.error('[summarize] Error:', err));
@@ -605,12 +606,14 @@ async function handleGenerateWorkItemsFromContext(send, ctx, conversationId) {
       return;
     }
 
-    await send(cardMessage(buildProgressCard('Generating Azure DevOps work item drafts from PRD...', 1, 2)));
+    const _pInfo = getProviderInfo();
+    await send(cardMessage(buildProgressCard(`Generating ${_pInfo.displayName} ${_pInfo.itemLabelPlural.toLowerCase()} from PRD...`, 1, 2)));
 
-    const { workItems } = await generateWorkItems(prd);
+    const result = await generateWorkItems(prd);
+    const workItems = result.workItems || result.tickets;
 
     if (!workItems || workItems.length === 0) {
-      await send(cardMessage(buildErrorCard('No work items generated. The PRD may not contain actionable items.')));
+      await send(cardMessage(buildErrorCard(`No ${_pInfo.itemLabelPlural.toLowerCase()} generated. The PRD may not contain actionable items.`)));
       return;
     }
 
@@ -622,10 +625,10 @@ async function handleGenerateWorkItemsFromContext(send, ctx, conversationId) {
     setConversationContext(conversationId, ctx);
 
     await send(cardMessage(buildWorkItemDraftsCard(workItems, workItemsId)));
-    console.log(`[genWorkItems] ${workItems.length} work items generated for conversation ${conversationId}`);
+    console.log(`[genWorkItems] ${workItems.length} ${_pInfo.itemLabelPlural.toLowerCase()} generated for conversation ${conversationId}`);
   } catch (error) {
     console.error('[genWorkItems] Error:', error);
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to generate Azure DevOps work items'))));
+    await send(cardMessage(buildErrorCard(formatError(error, `Failed to generate ${getProviderInfo().displayName} ${getProviderInfo().itemLabelPlural.toLowerCase()}`))));
   }
 }
 
@@ -713,12 +716,14 @@ async function handleGenerateWorkItems(send, data, activity) {
       storage.delete(`activePrd_${conversationId}`);
     }
 
-    await send(cardMessage(buildProgressCard('Generating Azure DevOps work item drafts...', 1, 2)));
+    const _pInfo2 = getProviderInfo();
+    await send(cardMessage(buildProgressCard(`Generating ${_pInfo2.displayName} ${_pInfo2.itemLabelPlural.toLowerCase()}...`, 1, 2)));
 
-    const { workItems } = await generateWorkItems(prd);
+    const result = await generateWorkItems(prd);
+    const workItems = result.workItems || result.tickets;
 
     if (!workItems || workItems.length === 0) {
-      await send(cardMessage(buildErrorCard('No work items generated.')));
+      await send(cardMessage(buildErrorCard(`No ${_pInfo2.itemLabelPlural.toLowerCase()} generated.`)));
       return;
     }
 
@@ -801,11 +806,12 @@ async function handleSubmitSelectedToAdo(send, data) {
       return;
     }
 
-    await send(cardMessage(buildProgressCard(`Submitting ${selectedWorkItems.length} of ${allWorkItems.length} work items to Azure DevOps...`, 1, 1)));
+    const _pInfo3 = getProviderInfo();
+    await send(cardMessage(buildProgressCard(`Submitting ${selectedWorkItems.length} of ${allWorkItems.length} ${_pInfo3.itemLabelPlural.toLowerCase()} to ${_pInfo3.displayName}...`, 1, 1)));
     const results = await submitToAdo(selectedWorkItems);
     await send(cardMessage(buildAdoResultCard(results)));
   } catch (error) {
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Azure DevOps'))));
+    await send(cardMessage(buildErrorCard(formatError(error, `Failed to submit to ${getProviderInfo().displayName}`))));
   }
 }
 
@@ -813,11 +819,12 @@ async function handleSubmitToAdo(send, data) {
   try {
     const workItems = storage.get(data.workItemsId);
     if (!workItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
-    await send(cardMessage(buildProgressCard('Submitting work items to Azure DevOps...', 1, 1)));
+    const _pInfo4 = getProviderInfo();
+    await send(cardMessage(buildProgressCard(`Submitting ${_pInfo4.itemLabelPlural.toLowerCase()} to ${_pInfo4.displayName}...`, 1, 1)));
     const results = await submitToAdo(workItems);
     await send(cardMessage(buildAdoResultCard(results)));
   } catch (error) {
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Azure DevOps'))));
+    await send(cardMessage(buildErrorCard(formatError(error, `Failed to submit to ${getProviderInfo().displayName}`))));
   }
 }
 

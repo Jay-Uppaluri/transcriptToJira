@@ -16,7 +16,9 @@ import { TEST_PRD, getTestTickets } from './server/testData.js';
 // Shared services (CJS — used by both web app and Teams bot)
 const require = createRequire(import.meta.url);
 const { generatePRD: sharedGeneratePRD } = require('./shared/prdService.cjs');
-const { generateTickets: sharedGenerateTickets, submitToJira: sharedSubmitToJira, buildJiraAuthFromEnv } = require('./shared/ticketService.cjs');
+const { generateTickets: sharedGenerateTickets, submitTickets: sharedSubmitTickets, buildAuthFromEnv, getProviderInfo, PROVIDER } = require('./shared/ticketProvider.cjs');
+// Keep direct Jira imports for OAuth-specific routes
+const { buildJiraAuthFromEnv } = require('./shared/ticketService.cjs');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -171,6 +173,12 @@ app.get('/auth/status', (req, res) => {
 app.post('/auth/disconnect', (req, res) => {
   deleteJiraConnection(req.sessionId);
   res.json({ ok: true });
+});
+
+// ==================== Provider Info Route ====================
+
+app.get('/api/provider', (req, res) => {
+  res.json(getProviderInfo());
 });
 
 // ==================== Jira Projects Route ====================
@@ -428,39 +436,47 @@ app.post('/api/generate-tickets', authenticateToken, async (req, res) => {
   }
 });
 
-// Step 3: Submit to Jira
-app.post('/api/submit-to-jira', authenticateToken, async (req, res) => {
+// Step 3: Submit tickets/work items to the configured provider
+async function handleSubmitTickets(req, res) {
   const { tickets } = req.body;
   if (!tickets || !tickets.length) {
     return res.status(400).json({ error: 'No tickets provided' });
   }
 
-  // Build auth config — try OAuth first, fall back to env vars
+  const info = getProviderInfo();
+
+  // Build auth config — for Jira, try OAuth first then env vars; for ADO, use env vars
   let auth;
-  try {
-    const tokenInfo = await getValidAccessToken(req.sessionId);
-    if (tokenInfo) {
-      auth = {
-        authHeader: `Bearer ${tokenInfo.accessToken}`,
-        baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
-        siteUrl: tokenInfo.siteUrl,
-      };
+  if (PROVIDER === 'jira') {
+    try {
+      const tokenInfo = await getValidAccessToken(req.sessionId);
+      if (tokenInfo) {
+        auth = {
+          authHeader: `Bearer ${tokenInfo.accessToken}`,
+          baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
+          siteUrl: tokenInfo.siteUrl,
+        };
+      }
+    } catch (err) {
+      console.error('OAuth token error, falling back to env vars:', err.message);
     }
-  } catch (err) {
-    console.error('OAuth token error, falling back to env vars:', err.message);
   }
 
   if (!auth) {
     try {
-      auth = buildJiraAuthFromEnv();
+      auth = buildAuthFromEnv();
     } catch (err) {
-      return res.status(401).json({ error: 'Not connected to Jira. Please connect your account first.' });
+      return res.status(401).json({ error: `Not connected to ${info.displayName}. Please check configuration.` });
     }
   }
 
-  const result = await sharedSubmitToJira(tickets, auth);
+  const result = await sharedSubmitTickets(tickets, auth);
   res.json(result);
-});
+}
+
+app.post('/api/submit-tickets', authenticateToken, handleSubmitTickets);
+// Backwards compatibility alias
+app.post('/api/submit-to-jira', authenticateToken, handleSubmitTickets);
 
 // ==================== VTT Upload & Action Item Extraction ====================
 
@@ -530,35 +546,8 @@ app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (
   }
 });
 
-// Submit previously extracted VTT tickets to Jira
-app.post('/api/vtt/submit-tickets', authenticateToken, async (req, res) => {
-  const { tickets } = req.body;
-  if (!tickets || !tickets.length) return res.status(400).json({ error: 'No tickets provided' });
-
-  // Build auth config — try OAuth first, fall back to env vars
-  let auth;
-  try {
-    const tokenInfo = await getValidAccessToken(req.sessionId);
-    if (tokenInfo) {
-      auth = {
-        authHeader: `Bearer ${tokenInfo.accessToken}`,
-        baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
-        siteUrl: tokenInfo.siteUrl,
-      };
-    }
-  } catch (err) { /* fall through */ }
-
-  if (!auth) {
-    try {
-      auth = buildJiraAuthFromEnv();
-    } catch (err) {
-      return res.status(401).json({ error: 'Not connected to Jira' });
-    }
-  }
-
-  const result = await sharedSubmitToJira(tickets, auth);
-  res.json(result);
-});
+// Submit previously extracted VTT tickets to the configured provider
+app.post('/api/vtt/submit-tickets', authenticateToken, handleSubmitTickets);
 
 // ==================== Teams Bot Integration ====================
 // Mount the Teams bot on this same Express server so Azure App Service

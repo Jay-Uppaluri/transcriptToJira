@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, FileText, Loader2, CheckCircle, XCircle, ArrowRight, Send, ChevronDown, ChevronUp, Trash2, ExternalLink, ArrowLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-export default function VTTUpload({ token, connection }) {
+export default function VTTUpload({ token, connection, provider }) {
   const [file, setFile] = useState(null);
   const [projectKey, setProjectKey] = useState('KAN');
   const [loading, setLoading] = useState(false);
@@ -122,7 +122,7 @@ export default function VTTUpload({ token, connection }) {
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#37352f] mb-2">Upload Meeting Transcript</h1>
-        <p className="text-[#787774] text-base">Upload a .vtt file → Generate PRD → Create Jira tickets.</p>
+        <p className="text-[#787774] text-base">Upload a .vtt file → Generate PRD → Create {provider?.itemLabelPlural || 'tickets'}.</p>
       </div>
 
       {/* Step indicator */}
@@ -174,7 +174,7 @@ export default function VTTUpload({ token, connection }) {
 
           <div className="flex items-center gap-4">
             <div>
-              <label className="block text-sm font-medium text-[#37352f] mb-1">Jira Project Key</label>
+              <label className="block text-sm font-medium text-[#37352f] mb-1">Project Key</label>
               <input
                 type="text"
                 value={projectKey}
@@ -243,7 +243,7 @@ export default function VTTUpload({ token, connection }) {
         <div className="space-y-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-[#37352f]">
-              Jira Tickets ({tickets.length})
+              {provider?.itemLabelPlural || 'Tickets'} ({tickets.length})
             </h2>
             <div className="flex gap-2">
               <button onClick={() => setStep('prd')} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef] flex items-center gap-2">
@@ -254,7 +254,7 @@ export default function VTTUpload({ token, connection }) {
                 disabled={submitting || !tickets.length}
                 className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 flex items-center gap-2"
               >
-                {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {tickets.length} Tickets</>}
+                {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {tickets.length} {provider?.itemLabelPlural || 'Tickets'}</>}
               </button>
             </div>
           </div>

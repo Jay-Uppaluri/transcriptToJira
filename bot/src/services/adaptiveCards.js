@@ -6,11 +6,11 @@ const GOOD = 'Good';
 const ATTENTION = 'Attention';
 const WARNING = 'Warning';
 
-// Unicode icons (Adaptive Cards don't support images inline easily)
+// Unicode icons
 const ICON = {
   doc: '📄',
   ticket: '🎫',
-  jira: '🔗',
+  link: '🔗',
   check: '✅',
   cross: '❌',
   clock: '⏳',
@@ -20,15 +20,17 @@ const ICON = {
   error: '⚠️',
   retry: '🔄',
   epic: '🏔️',
+  feature: '⭐',
   story: '📖',
   task: '✏️',
   bug: '🐛',
   sparkle: '✨',
 };
 
-const ISSUE_ICON = {
+const WORK_ITEM_ICON = {
   Epic: ICON.epic,
-  Story: ICON.story,
+  Feature: ICON.feature,
+  'User Story': ICON.story,
   Task: ICON.task,
   Bug: ICON.bug,
 };
@@ -89,10 +91,10 @@ function card(body, actions) {
 
 function buildWelcomeCard() {
   return card([
-    ...headerBlock(ICON.wave, 'Welcome to Transcript → Jira!', null),
+    ...headerBlock(ICON.wave, 'Welcome to Transcript → Azure DevOps!', null),
     {
       type: 'TextBlock',
-      text: 'I turn meeting transcripts into **professional PRDs** and **Jira tickets** — in seconds.',
+      text: 'I turn meeting transcripts into **professional PRDs** and **Azure DevOps work items** — in seconds.',
       wrap: true,
       spacing: 'Medium',
     },
@@ -108,7 +110,7 @@ function buildWelcomeCard() {
       spacing: 'Small',
       facts: [
         { title: `${ICON.doc} Paste transcript`, value: '/prd-from-text <transcript>' },
-        { title: `${ICON.jira} From meeting URL`, value: '/generate-prd <teams-url>' },
+        { title: `${ICON.link} From meeting URL`, value: '/generate-prd <teams-url>' },
         { title: `${ICON.help} Get help`, value: '/help' },
       ],
     },
@@ -152,13 +154,13 @@ function buildHelpCard() {
     },
     {
       type: 'TextBlock',
-      text: `1. Paste transcript or provide meeting URL → Review the **Summary**\n2. Confirm summary → I generate a **PRD**\n3. Chat to **edit the PRD** until you're happy\n4. Click **Generate Jira Tickets** → Review **drafts**\n5. Edit tickets, toggle off any you don't want → **Push to Jira**\n\nYou can also just chat with me for general questions.`,
+      text: `1. Paste transcript or provide meeting URL → Review the **Summary**\n2. Confirm summary → I generate a **PRD**\n3. Chat to **edit the PRD** until you're happy\n4. Click **Generate Work Items** → Review **drafts**\n5. Edit work items, toggle off any you don't want → **Push to Azure DevOps**\n\nYou can also just chat with me for general questions.`,
       wrap: true,
       spacing: 'Small',
     },
     {
       type: 'TextBlock',
-      text: `${ICON.sparkle} *Powered by GPT-4o • Jira project: ${config.jiraProjectKey}*`,
+      text: `${ICON.sparkle} *Powered by GPT-4o • Azure DevOps: ${config.adoProject || '(not configured)'}*`,
       wrap: true,
       spacing: 'Medium',
       isSubtle: true,
@@ -312,13 +314,6 @@ function buildSummaryCard(summary, meetingSubject, dataId, sourceType) {
     placeholder: 'e.g., "Focus on the mobile experience", "Include API rate limiting requirements"',
     isMultiline: true,
   });
-  body.push({
-    type: 'Input.Text',
-    id: 'projectKey',
-    label: 'Jira Project Key',
-    value: config.jiraProjectKey,
-    placeholder: 'e.g., KAN',
-  });
 
   return card(body, [
     {
@@ -333,10 +328,9 @@ function buildSummaryCard(summary, meetingSubject, dataId, sourceType) {
 // ─── PRD Card ───
 
 function buildPRDCard(prdContent, meetingSubject, prdId) {
-  // Split PRD into sections for collapsible display
   const sections = parsePRDSections(prdContent);
   const preview = prdContent.length > 3000
-    ? prdContent.substring(0, 3000) + '\n\n*... (truncated for display — full PRD used for ticket generation)*'
+    ? prdContent.substring(0, 3000) + '\n\n*... (truncated for display — full PRD used for work item generation)*'
     : prdContent;
 
   const body = [
@@ -344,7 +338,6 @@ function buildPRDCard(prdContent, meetingSubject, prdId) {
     divider(),
   ];
 
-  // If we can parse sections, show them nicely
   if (sections.length > 1) {
     for (const section of sections) {
       if (section.title) {
@@ -382,24 +375,17 @@ function buildPRDCard(prdContent, meetingSubject, prdId) {
   });
   body.push({
     type: 'TextBlock',
-    text: `${ICON.ticket} When you're happy with the PRD, generate Jira tickets:`,
+    text: `${ICON.ticket} When you're happy with the PRD, generate Azure DevOps work items:`,
     wrap: true,
     spacing: 'Medium',
     isSubtle: true,
-  });
-  body.push({
-    type: 'Input.Text',
-    id: 'projectKey',
-    label: 'Jira Project Key',
-    value: config.jiraProjectKey,
-    placeholder: 'e.g., KAN',
   });
 
   return card(body, [
     {
       type: 'Action.Submit',
-      title: `${ICON.ticket} Generate Jira Tickets`,
-      data: { action: 'generateTickets', prdId },
+      title: `${ICON.ticket} Generate Work Items`,
+      data: { action: 'generateWorkItems', prdId },
       style: 'positive',
     },
   ]);
@@ -426,7 +412,6 @@ function parsePRDSections(prd) {
     sections.push({ title: current.title, content: current.content.trim() });
   }
 
-  // Truncate long sections
   return sections.map(s => ({
     title: s.title,
     content: s.content.length > 500
@@ -435,21 +420,21 @@ function parsePRDSections(prd) {
   }));
 }
 
-// ─── Ticket Drafts Card (with toggles and edit buttons) ───
+// ─── Work Item Drafts Card (with toggles) ───
 
-function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
+function buildWorkItemDraftsCard(workItems, workItemsId) {
   const counts = {};
-  for (const t of tickets) {
-    const type = t.fields?.issuetype?.name || 'Task';
+  for (const wi of workItems) {
+    const type = wi.workItemType || 'Task';
     counts[type] = (counts[type] || 0) + 1;
   }
 
   const summaryParts = Object.entries(counts)
-    .map(([type, count]) => `${ISSUE_ICON[type] || '📋'} ${count} ${type}${count > 1 ? 's' : ''}`)
+    .map(([type, count]) => `${WORK_ITEM_ICON[type] || '📋'} ${count} ${type}${count > 1 ? 's' : ''}`)
     .join('  •  ');
 
   const body = [
-    ...headerBlock(ICON.ticket, 'Ticket Drafts', `${tickets.length} tickets ready for review`),
+    ...headerBlock(ICON.ticket, 'Work Item Drafts', `${workItems.length} work items ready for review`),
     {
       type: 'TextBlock',
       text: summaryParts,
@@ -458,7 +443,7 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
     },
     {
       type: 'TextBlock',
-      text: 'Toggle tickets on/off to include or exclude them. Click **Edit** to modify a ticket.',
+      text: 'Toggle work items on/off to include or exclude them. Click **Edit** to modify.',
       wrap: true,
       spacing: 'Small',
       isSubtle: true,
@@ -466,41 +451,36 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
     divider(),
   ];
 
-  // Flat list with toggles and edit buttons
-  let ticketIndex = 0;
   const grouped = {};
-  const indexMap = {}; // type -> [originalIndex]
-  for (let i = 0; i < tickets.length; i++) {
-    const type = tickets[i].fields?.issuetype?.name || 'Task';
+  const indexMap = {};
+  for (let i = 0; i < workItems.length; i++) {
+    const type = workItems[i].workItemType || 'Task';
     if (!grouped[type]) { grouped[type] = []; indexMap[type] = []; }
-    grouped[type].push(tickets[i]);
+    grouped[type].push(workItems[i]);
     indexMap[type].push(i);
   }
+
+  const priorityLabel = { 1: '🔴 Critical', 2: '🔴 High', 3: '🟡 Medium', 4: '🔵 Low' };
 
   for (const [type, items] of Object.entries(grouped)) {
     body.push({
       type: 'TextBlock',
-      text: `${ISSUE_ICON[type] || '📋'} **${type}s**`,
+      text: `${WORK_ITEM_ICON[type] || '📋'} **${type}s**`,
       weight: 'Bolder',
       spacing: 'Medium',
     });
 
     for (let j = 0; j < items.length; j++) {
-      const t = items[j];
+      const wi = items[j];
       const idx = indexMap[type][j];
-      const priority = t.fields?.priority?.name || 'Medium';
-      const priorityIcon = priority === 'High' || priority === 'Highest' ? '🔴'
-        : priority === 'Low' || priority === 'Lowest' ? '🔵' : '🟡';
+      const pLabel = priorityLabel[wi.priority] || '🟡 Medium';
 
-      const description = adfToPlainText(t.fields?.description);
-      const descriptionPreview = description.length > 150
-        ? description.substring(0, 150) + '...'
-        : description;
+      const descPreview = (wi.description || '').replace(/<[^>]*>/g, '');
+      const descTruncated = descPreview.length > 150
+        ? descPreview.substring(0, 150) + '...'
+        : descPreview;
 
-      // Ticket container with emphasis style for visual separation
       const ticketItems = [];
-
-      // Row: Checkbox + Title + Description (same column) + Priority
       ticketItems.push({
         type: 'ColumnSet',
         spacing: 'None',
@@ -524,12 +504,12 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
             items: [
               {
                 type: 'TextBlock',
-                text: `**${t.fields?.summary || 'Untitled'}**`,
+                text: `**${wi.title || 'Untitled'}**`,
                 wrap: true,
               },
-              ...(descriptionPreview ? [{
+              ...(descTruncated ? [{
                 type: 'TextBlock',
-                text: descriptionPreview,
+                text: descTruncated,
                 wrap: true,
                 size: 'Small',
                 isSubtle: true,
@@ -543,7 +523,7 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
             width: 'auto',
             items: [{
               type: 'TextBlock',
-              text: `${priorityIcon} ${priority}`,
+              text: pLabel,
               isSubtle: true,
               size: 'Small',
             }],
@@ -566,98 +546,116 @@ function buildTicketDraftsCard(tickets, projectKey, ticketsId) {
   body.push(divider());
   body.push({
     type: 'TextBlock',
-    text: `Target project: **${projectKey}**`,
+    text: `Target: **${config.adoProject || 'Azure DevOps'}**`,
     isSubtle: true,
     spacing: 'Medium',
     size: 'Small',
   });
 
-  const actions = [];
-
-  // Edit buttons per ticket as a single Action.Submit
-  actions.push({
-    type: 'Action.Submit',
-    title: `${ICON.task} Edit Tickets`,
-    data: { action: 'showEditMenu', ticketsId, projectKey },
-  });
-
-  actions.push({
-    type: 'Action.Submit',
-    title: `${ICON.jira} Push Selected to Jira`,
-    data: { action: 'submitSelectedToJira', ticketsId, projectKey },
-    style: 'positive',
-  });
+  const actions = [
+    {
+      type: 'Action.Submit',
+      title: `${ICON.task} Edit Work Items`,
+      data: { action: 'showEditMenu', workItemsId },
+    },
+    {
+      type: 'Action.Submit',
+      title: `${ICON.link} Push Selected to Azure DevOps`,
+      data: { action: 'submitSelectedToAdo', workItemsId },
+      style: 'positive',
+    },
+  ];
 
   return card(body, actions);
 }
 
-// ─── Edit Ticket Menu Card (pick which ticket to edit) ───
+// ─── Edit Work Item Menu Card ───
 
-function buildEditTicketMenuCard(tickets, ticketsId, projectKey) {
+function buildEditWorkItemMenuCard(workItems, workItemsId) {
   const body = [
-    ...headerBlock(ICON.task, 'Edit Tickets', 'Select a ticket to edit'),
+    ...headerBlock(ICON.task, 'Edit Work Items', 'Select a work item to edit'),
     divider(),
   ];
 
   const actions = [];
-  for (let i = 0; i < tickets.length; i++) {
-    const t = tickets[i];
-    const type = t.fields?.issuetype?.name || 'Task';
-    const icon = ISSUE_ICON[type] || '📋';
+  for (let i = 0; i < workItems.length; i++) {
+    const wi = workItems[i];
+    const type = wi.workItemType || 'Task';
+    const icon = WORK_ITEM_ICON[type] || '📋';
     actions.push({
       type: 'Action.Submit',
-      title: `${icon} ${t.fields?.summary || 'Untitled'}`,
-      data: { action: 'editTicket', ticketsId, ticketIndex: i, projectKey },
+      title: `${icon} ${wi.title || 'Untitled'}`,
+      data: { action: 'editWorkItem', workItemsId, workItemIndex: i },
     });
   }
 
   actions.push({
     type: 'Action.Submit',
     title: `${ICON.retry} Back to Drafts`,
-    data: { action: 'cancelTicketEdit', ticketsId, projectKey },
+    data: { action: 'cancelWorkItemEdit', workItemsId },
   });
 
   return card(body, actions);
 }
 
-// ─── Edit Single Ticket Card ───
+// ─── Edit Single Work Item Card ───
 
-function buildEditTicketCard(ticket, ticketIndex, ticketsId, projectKey) {
-  const summary = ticket.fields?.summary || '';
-  const priority = ticket.fields?.priority?.name || 'Medium';
-  const type = ticket.fields?.issuetype?.name || 'Task';
-  const description = adfToPlainText(ticket.fields?.description);
+function buildEditWorkItemCard(workItem, workItemIndex, workItemsId) {
+  const title = workItem.title || '';
+  const priority = workItem.priority || 3;
+  const type = workItem.workItemType || 'Task';
+  const description = (workItem.description || '').replace(/<[^>]*>/g, '');
+  const tags = workItem.tags || '';
 
   const body = [
-    ...headerBlock(ICON.task, `Edit: ${type}`, summary),
+    ...headerBlock(ICON.task, `Edit: ${type}`, title),
     divider(),
     {
       type: 'Input.Text',
       id: 'editTitle',
       label: 'Title',
-      value: summary,
-      placeholder: 'Ticket title',
+      value: title,
+      placeholder: 'Work item title',
     },
     {
       type: 'Input.Text',
       id: 'editDescription',
       label: 'Description',
       value: description,
-      placeholder: 'Ticket description',
+      placeholder: 'Work item description',
       isMultiline: true,
     },
     {
       type: 'Input.ChoiceSet',
       id: 'editPriority',
       label: 'Priority',
-      value: priority,
+      value: String(priority),
       choices: [
-        { title: '🔴 Highest', value: 'Highest' },
-        { title: '🔴 High', value: 'High' },
-        { title: '🟡 Medium', value: 'Medium' },
-        { title: '🔵 Low', value: 'Low' },
-        { title: '🔵 Lowest', value: 'Lowest' },
+        { title: '🔴 1 - Critical', value: '1' },
+        { title: '🔴 2 - High', value: '2' },
+        { title: '🟡 3 - Medium', value: '3' },
+        { title: '🔵 4 - Low', value: '4' },
       ],
+    },
+    {
+      type: 'Input.ChoiceSet',
+      id: 'editType',
+      label: 'Work Item Type',
+      value: type,
+      choices: [
+        { title: '🏔️ Epic', value: 'Epic' },
+        { title: '⭐ Feature', value: 'Feature' },
+        { title: '📖 User Story', value: 'User Story' },
+        { title: '✏️ Task', value: 'Task' },
+        { title: '🐛 Bug', value: 'Bug' },
+      ],
+    },
+    {
+      type: 'Input.Text',
+      id: 'editTags',
+      label: 'Tags (semicolon-separated)',
+      value: tags,
+      placeholder: 'e.g., frontend; checkout; sprint-1',
     },
   ];
 
@@ -665,84 +663,32 @@ function buildEditTicketCard(ticket, ticketIndex, ticketsId, projectKey) {
     {
       type: 'Action.Submit',
       title: `${ICON.check} Save Changes`,
-      data: { action: 'saveTicketEdit', ticketsId, ticketIndex, projectKey },
+      data: { action: 'saveWorkItemEdit', workItemsId, workItemIndex },
       style: 'positive',
     },
     {
       type: 'Action.Submit',
       title: 'Cancel',
-      data: { action: 'cancelTicketEdit', ticketsId, projectKey },
+      data: { action: 'cancelWorkItemEdit', workItemsId },
     },
   ]);
 }
 
-// ─── ADF Conversion Helpers ───
+// ─── ADO Result Card ───
 
-function adfToPlainText(adfDoc) {
-  if (!adfDoc || !adfDoc.content) return '';
-
-  function extractText(nodes) {
-    let text = '';
-    for (const node of nodes) {
-      if (node.type === 'text') {
-        text += node.text || '';
-      } else if (node.type === 'hardBreak') {
-        text += '\n';
-      } else if (node.type === 'paragraph') {
-        text += extractText(node.content || []) + '\n';
-      } else if (node.type === 'bulletList' || node.type === 'orderedList') {
-        for (const item of (node.content || [])) {
-          text += '• ' + extractText(item.content || []);
-        }
-      } else if (node.type === 'listItem') {
-        text += extractText(node.content || []);
-      } else if (node.type === 'heading') {
-        text += extractText(node.content || []) + '\n';
-      } else if (node.content) {
-        text += extractText(node.content);
-      }
-    }
-    return text;
-  }
-
-  return extractText(adfDoc.content).trim();
-}
-
-function plainTextToAdf(text) {
-  const lines = text.split('\n').filter(l => l.trim());
-  const content = lines.map(line => ({
-    type: 'paragraph',
-    content: [{ type: 'text', text: line }],
-  }));
-
-  return {
-    type: 'doc',
-    version: 1,
-    content: content.length > 0 ? content : [{ type: 'paragraph', content: [{ type: 'text', text: ' ' }] }],
-  };
-}
-
-// Legacy alias for backward compatibility
-function buildTicketsCard(tickets, projectKey, ticketsId) {
-  return buildTicketDraftsCard(tickets, projectKey, ticketsId);
-}
-
-// ─── Jira Result Card ───
-
-function buildJiraResultCard(results) {
+function buildAdoResultCard(results) {
   const { created, failed, total } = results;
   const allGood = failed === 0;
 
   const body = [
     ...headerBlock(
       allGood ? ICON.check : ICON.error,
-      allGood ? 'All Tickets Created!' : 'Jira Submission Complete',
-      `${created} of ${total} tickets created successfully`
+      allGood ? 'All Work Items Created!' : 'Azure DevOps Submission Complete',
+      `${created} of ${total} work items created successfully`
     ),
     divider(),
   ];
 
-  // Success items
   const successes = results.results.filter(r => r.success);
   if (successes.length) {
     body.push({
@@ -752,18 +698,18 @@ function buildJiraResultCard(results) {
       spacing: 'Medium',
     });
     for (const r of successes) {
-      const key = r.data?.key || 'Unknown';
-      const url = config.jiraBaseUrl ? `${config.jiraBaseUrl}/browse/${key}` : '#';
+      const id = r.workItemId || 'Unknown';
+      const url = r.workItemUrl || '#';
+      const typeIcon = WORK_ITEM_ICON[r.workItemType] || '📋';
       body.push({
         type: 'TextBlock',
-        text: `[${key}](${url}) — ${r.summary}`,
+        text: `${typeIcon} [#${id}](${url}) — ${r.title}`,
         wrap: true,
         spacing: 'Small',
       });
     }
   }
 
-  // Failed items
   const failures = results.results.filter(r => !r.success);
   if (failures.length) {
     body.push({
@@ -776,7 +722,7 @@ function buildJiraResultCard(results) {
     for (const r of failures) {
       body.push({
         type: 'TextBlock',
-        text: `${r.summary} — *${r.error || 'Unknown error'}*`,
+        text: `${r.title} — *${r.error || 'Unknown error'}*`,
         wrap: true,
         color: ATTENTION,
         spacing: 'Small',
@@ -817,14 +763,11 @@ module.exports = {
   buildErrorCard,
   buildPRDCard,
   buildSummaryCard,
-  buildTicketsCard,
-  buildTicketDraftsCard,
-  buildEditTicketMenuCard,
-  buildEditTicketCard,
-  buildJiraResultCard,
+  buildWorkItemDraftsCard,
+  buildEditWorkItemMenuCard,
+  buildEditWorkItemCard,
+  buildAdoResultCard,
   buildWelcomeCard,
   buildHelpCard,
   buildValidationCard,
-  adfToPlainText,
-  plainTextToAdf,
 };

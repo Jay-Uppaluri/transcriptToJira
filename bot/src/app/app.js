@@ -11,20 +11,19 @@ const config = require("../config");
 // Services
 const { getMeetingTranscript } = require('../services/graphService');
 const { generatePRD, generateSummary, editPRD } = require('../services/prdService');
-const { generateTickets, submitToJira } = require('../services/ticketService');
+const { generateWorkItems, submitToAdo } = require('../services/adoTicketService');
 const {
   buildPRDCard,
   buildSummaryCard,
-  buildTicketDraftsCard,
-  buildEditTicketMenuCard,
-  buildEditTicketCard,
-  buildJiraResultCard,
+  buildWorkItemDraftsCard,
+  buildEditWorkItemMenuCard,
+  buildEditWorkItemCard,
+  buildAdoResultCard,
   buildProgressCard,
   buildErrorCard,
   buildWelcomeCard,
   buildHelpCard,
   buildValidationCard,
-  plainTextToAdf,
 } = require('../services/adaptiveCards');
 
 // ─── Deduplication ───
@@ -48,7 +47,7 @@ function isDuplicate(activityId) {
 
 function isActionDuplicate(data) {
   if (!data?.action) return false;
-  const key = `action:${data.action}:${data.prdId || data.ticketsId || data.transcriptId || data.urlId || data.dataId || ''}`;
+  const key = `action:${data.action}:${data.prdId || data.workItemsId || data.transcriptId || data.urlId || data.dataId || ''}`;
   if (processedActivities.has(key)) return true;
   processedActivities.set(key, Date.now());
   return false;
@@ -210,7 +209,6 @@ function detectIntent(text) {
     (lower.includes('prd') || lower.includes('product requirement') || lower.includes('document')) &&
     (lower.includes('create') || lower.includes('draft') || lower.includes('generate') || lower.includes('write') || lower.includes('make') || lower.includes("let's"))
   ) {
-    // Distinguish between "summarize first" vs "draft the PRD now"
     if (lower.includes('meeting') || lower.includes('transcript') || lower.includes('discussion') || lower.includes('context')) {
       if (lower.includes('draft') || lower.includes('with this context') || lower.includes('go ahead') || lower.includes('create the prd') || lower.includes('write the prd') || lower.includes('generate the prd')) {
         return 'draft_prd';
@@ -233,12 +231,12 @@ function detectIntent(text) {
     return 'draft_prd';
   }
 
-  // Generate Jira tickets
+  // Generate work items
   if (
-    (lower.includes('jira') || lower.includes('ticket')) &&
+    (lower.includes('work item') || lower.includes('ticket') || lower.includes('ado') || lower.includes('azure devops')) &&
     (lower.includes('generate') || lower.includes('create') || lower.includes('make'))
   ) {
-    return 'generate_tickets';
+    return 'generate_work_items';
   }
 
   // Help
@@ -255,7 +253,6 @@ function detectIntent(text) {
 }
 
 // ─── Conversation Context Management ───
-// Key: conversationId (thread) → { stage, summary, additionalContext[], prd, prdId, ticketsId }
 
 function getConversationContext(conversationId) {
   return storage.get(`demoCtx_${conversationId}`) || { stage: 'idle', additionalContext: [] };
@@ -268,17 +265,13 @@ function setConversationContext(conversationId, ctx) {
 // ─── Check if bot is @mentioned ───
 
 function isBotMentioned(activity) {
-  // In personal chat, always respond
   if (!activity.conversation.isGroup) return true;
 
-  // Check for @mention in entities
   const entities = activity.entities || [];
   const botId = activity.recipient?.id;
   for (const entity of entities) {
     if (entity.type === 'mention') {
-      // Check if the mention is for the bot (not the sender)
       if (entity.mentioned?.id === botId) return true;
-      // Also check by name
       if (entity.mentioned?.name && (
         entity.mentioned.name.toLowerCase().includes('cortex') ||
         entity.mentioned.name.toLowerCase().includes('transcript')
@@ -286,7 +279,6 @@ function isBotMentioned(activity) {
     }
   }
 
-  // Check text content for bot name
   const text = (activity.text || '').toLowerCase();
   if (text.includes('<at>cortex</at>') || text.includes('<at>transcript')) return true;
 
@@ -300,8 +292,8 @@ function formatError(error, context) {
   if (msg.includes('openai') || msg.includes('429') || msg.includes('rate limit')) {
     return `⚠️ **AI Service Temporarily Unavailable**\n\n${context}. Please try again in a moment.`;
   }
-  if (msg.includes('jira') || msg.includes('Unauthorized') || msg.includes('401')) {
-    return `⚠️ **Jira Connection Issue**\n\n${context}. Please check configuration.`;
+  if (msg.includes('Azure DevOps') || msg.includes('Unauthorized') || msg.includes('401') || msg.includes('ADO')) {
+    return `⚠️ **Azure DevOps Connection Issue**\n\n${context}. Please check configuration.`;
   }
   const detail = msg && msg !== 'undefined' ? `\n\n*Detail:* ${msg}` : '';
   return `⚠️ **Something went wrong**\n\n${context}.${detail}`;
@@ -363,32 +355,32 @@ app.on('message', async ({ send, stream, activity }) => {
       handleConfirmSummary(send, data, activity).catch(err => console.error('[confirmSummary] Error:', err));
       return;
     }
-    if (data.action === 'generateTickets') {
-      handleGenerateTickets(send, data, activity).catch(err => console.error('[generateTickets] Error:', err));
+    if (data.action === 'generateWorkItems') {
+      handleGenerateWorkItems(send, data, activity).catch(err => console.error('[generateWorkItems] Error:', err));
       return;
     }
-    if (data.action === 'submitSelectedToJira') {
-      handleSubmitSelectedToJira(send, data).catch(err => console.error('[submitSelectedToJira] Error:', err));
+    if (data.action === 'submitSelectedToAdo') {
+      handleSubmitSelectedToAdo(send, data).catch(err => console.error('[submitSelectedToAdo] Error:', err));
       return;
     }
-    if (data.action === 'submitToJira') {
-      handleSubmitToJira(send, data).catch(err => console.error('[submitToJira] Error:', err));
+    if (data.action === 'submitToAdo') {
+      handleSubmitToAdo(send, data).catch(err => console.error('[submitToAdo] Error:', err));
       return;
     }
     if (data.action === 'showEditMenu') {
       handleShowEditMenu(send, data).catch(err => console.error('[showEditMenu] Error:', err));
       return;
     }
-    if (data.action === 'editTicket') {
-      handleEditTicket(send, data).catch(err => console.error('[editTicket] Error:', err));
+    if (data.action === 'editWorkItem') {
+      handleEditWorkItem(send, data).catch(err => console.error('[editWorkItem] Error:', err));
       return;
     }
-    if (data.action === 'saveTicketEdit') {
-      handleSaveTicketEdit(send, data).catch(err => console.error('[saveTicketEdit] Error:', err));
+    if (data.action === 'saveWorkItemEdit') {
+      handleSaveWorkItemEdit(send, data).catch(err => console.error('[saveWorkItemEdit] Error:', err));
       return;
     }
-    if (data.action === 'cancelTicketEdit') {
-      handleCancelTicketEdit(send, data).catch(err => console.error('[cancelTicketEdit] Error:', err));
+    if (data.action === 'cancelWorkItemEdit') {
+      handleCancelWorkItemEdit(send, data).catch(err => console.error('[cancelWorkItemEdit] Error:', err));
       return;
     }
     console.log('[card.submit] Unknown action:', data.action);
@@ -402,13 +394,13 @@ app.on('message', async ({ send, stream, activity }) => {
   const mentioned = isBotMentioned(activity);
   const ctx = getConversationContext(conversationId);
 
-  // ─── "Generate Jira Tickets" — allow without @mention if we have a PRD ───
+  // ─── "Generate Work Items" — allow without @mention if we have a PRD ───
   if (
-    (lowerText.includes('generate') && (lowerText.includes('jira') || lowerText.includes('ticket'))) ||
-    (lowerText.includes('create') && lowerText.includes('ticket'))
+    (lowerText.includes('generate') && (lowerText.includes('work item') || lowerText.includes('ticket') || lowerText.includes('ado'))) ||
+    (lowerText.includes('create') && (lowerText.includes('work item') || lowerText.includes('ticket')))
   ) {
     if (ctx.stage === 'prd_done' && ctx.prdId) {
-      handleGenerateTicketsFromContext(send, ctx, conversationId).catch(err => console.error('[genTickets] Error:', err));
+      handleGenerateWorkItemsFromContext(send, ctx, conversationId).catch(err => console.error('[genWorkItems] Error:', err));
       return;
     }
   }
@@ -416,7 +408,6 @@ app.on('message', async ({ send, stream, activity }) => {
   // ─── Only require @mention if conversation has no active context ───
   if (!mentioned && ctx.stage === 'idle') return;
 
-  // If not mentioned but context is active, treat as if mentioned (auto-reply in active threads)
   const effectivelyMentioned = mentioned || ctx.stage !== 'idle';
 
   // ─── Legacy command support ───
@@ -456,23 +447,21 @@ app.on('message', async ({ send, stream, activity }) => {
       if (ctx.stage === 'summary_done' || ctx.stage === 'context_added') {
         handleDraftPrd(send, ctx, conversationId).catch(err => console.error('[draftPrd] Error:', err));
       } else if (ctx.stage === 'prd_done') {
-        // They want to re-draft or edit
         await send(new MessageActivity(
           "I've already generated a PRD. You can:\n" +
           "- Tell me what to **edit** (e.g., \"add a security section\")\n" +
-          "- Say **\"Generate Jira Tickets\"** to create tickets from it"
+          "- Say **\"Generate Work Items\"** to create Azure DevOps work items from it"
         ));
       } else {
-        // No summary yet — do both: summarize then offer PRD
         handleSummarizeMeetings(send, conversationId).catch(err => console.error('[summarize] Error:', err));
       }
       break;
 
-    case 'generate_tickets':
+    case 'generate_work_items':
       if (ctx.stage === 'prd_done' && ctx.prdId) {
-        handleGenerateTicketsFromContext(send, ctx, conversationId).catch(err => console.error('[genTickets] Error:', err));
+        handleGenerateWorkItemsFromContext(send, ctx, conversationId).catch(err => console.error('[genWorkItems] Error:', err));
       } else {
-        await send(new MessageActivity("I don't have a PRD to generate tickets from yet. Let's start by creating a PRD first — just ask me to summarize your meetings or draft a PRD."));
+        await send(new MessageActivity("I don't have a PRD to generate work items from yet. Let's start by creating a PRD first — just ask me to summarize your meetings or draft a PRD."));
       }
       break;
 
@@ -486,9 +475,7 @@ app.on('message', async ({ send, stream, activity }) => {
 
     case 'chat':
     default: {
-      // If we're in summary stage and they're adding context, capture it
       if (ctx.stage === 'summary_done' || ctx.stage === 'context_added') {
-        // They're @mentioning with more context before PRD
         ctx.additionalContext.push(cleanText);
         ctx.stage = 'context_added';
         setConversationContext(conversationId, ctx);
@@ -570,7 +557,6 @@ async function handleSummarizeMeetings(send, conversationId) {
     ctx.additionalContext = [];
     setConversationContext(conversationId, ctx);
 
-    // Send as a plain message (conversational, not card-based)
     const response = `📋 **Here's a summary of your recent meetings:**\n\n${meetingList}\n\n---\n\n${summary}\n\n---\n\n💬 **Let me know if I need any more context before creating a PRD.** Anyone on the team can add details here — just reply to this thread. When you're ready, say **"@Cortex let's draft a PRD"**.`;
 
     await send(new MessageActivity(response));
@@ -585,7 +571,6 @@ async function handleDraftPrd(send, ctx, conversationId) {
   try {
     await send(cardMessage(buildProgressCard('Drafting PRD with all context...', 1, 1)));
 
-    // Build full input: transcript + additional context
     let fullInput = ctx.transcript;
     if (ctx.additionalContext && ctx.additionalContext.length > 0) {
       fullInput += '\n\n--- Additional Context from Team ---\n' + ctx.additionalContext.join('\n\n');
@@ -603,7 +588,7 @@ async function handleDraftPrd(send, ctx, conversationId) {
 
     await send(cardMessage(buildPRDCard(prd, 'Checkout Flow Redesign', prdId)));
 
-    await send(new MessageActivity('📝 **PRD generated!** You can:\n- Reply with edit requests (e.g., "add a security section")\n- Say **"Generate Jira Tickets"** when you\'re ready'));
+    await send(new MessageActivity('📝 **PRD generated!** You can:\n- Reply with edit requests (e.g., "add a security section")\n- Say **"Generate Work Items"** when you\'re ready'));
 
     console.log(`[draftPrd] PRD generated for conversation ${conversationId}`);
   } catch (error) {
@@ -612,7 +597,7 @@ async function handleDraftPrd(send, ctx, conversationId) {
   }
 }
 
-async function handleGenerateTicketsFromContext(send, ctx, conversationId) {
+async function handleGenerateWorkItemsFromContext(send, ctx, conversationId) {
   try {
     const prd = storage.get(ctx.prdId);
     if (!prd) {
@@ -620,28 +605,27 @@ async function handleGenerateTicketsFromContext(send, ctx, conversationId) {
       return;
     }
 
-    await send(cardMessage(buildProgressCard('Generating Jira ticket drafts from PRD...', 1, 2)));
+    await send(cardMessage(buildProgressCard('Generating Azure DevOps work item drafts from PRD...', 1, 2)));
 
-    const projectKey = config.jiraProjectKey;
-    const { tickets } = await generateTickets(prd, projectKey);
+    const { workItems } = await generateWorkItems(prd);
 
-    if (!tickets || tickets.length === 0) {
-      await send(cardMessage(buildErrorCard('No tickets generated. The PRD may not contain actionable items.')));
+    if (!workItems || workItems.length === 0) {
+      await send(cardMessage(buildErrorCard('No work items generated. The PRD may not contain actionable items.')));
       return;
     }
 
-    const ticketsId = `tickets_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    storage.set(ticketsId, tickets);
+    const workItemsId = `workitems_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(workItemsId, workItems);
 
-    ctx.stage = 'tickets_done';
-    ctx.ticketsId = ticketsId;
+    ctx.stage = 'work_items_done';
+    ctx.workItemsId = workItemsId;
     setConversationContext(conversationId, ctx);
 
-    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, ticketsId)));
-    console.log(`[genTickets] ${tickets.length} tickets generated for conversation ${conversationId}`);
+    await send(cardMessage(buildWorkItemDraftsCard(workItems, workItemsId)));
+    console.log(`[genWorkItems] ${workItems.length} work items generated for conversation ${conversationId}`);
   } catch (error) {
-    console.error('[genTickets] Error:', error);
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to generate Jira tickets'))));
+    console.error('[genWorkItems] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to generate Azure DevOps work items'))));
   }
 }
 
@@ -666,7 +650,7 @@ async function handlePrdEditConversational(send, ctx, editInstruction, conversat
   }
 }
 
-// ─── Legacy/Card-based Handlers (kept for adaptive card button support) ───
+// ─── Legacy/Card-based Handlers ───
 
 async function handlePrdFromText(send, transcript) {
   try {
@@ -700,7 +684,6 @@ async function handleConfirmSummary(send, data, activity) {
     const prdId = `prd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     storage.set(prdId, prd);
 
-    // Update conversation context
     const conversationId = activity.conversation.id;
     const ctx = getConversationContext(conversationId);
     ctx.stage = 'prd_done';
@@ -708,7 +691,6 @@ async function handleConfirmSummary(send, data, activity) {
     ctx.prd = prd;
     setConversationContext(conversationId, ctx);
 
-    // Set active PRD for edit mode
     storage.set(`activePrd_${conversationId}`, { prdId, meetingSubject: meetingSubject || 'Manual Transcript' });
 
     await send(cardMessage(buildPRDCard(prd, meetingSubject || 'Manual Transcript', prdId)));
@@ -718,7 +700,7 @@ async function handleConfirmSummary(send, data, activity) {
   }
 }
 
-async function handleGenerateTickets(send, data, activity) {
+async function handleGenerateWorkItems(send, data, activity) {
   try {
     const prd = storage.get(data.prdId);
     if (!prd) {
@@ -731,112 +713,111 @@ async function handleGenerateTickets(send, data, activity) {
       storage.delete(`activePrd_${conversationId}`);
     }
 
-    await send(cardMessage(buildProgressCard('Generating Jira ticket drafts...', 1, 2)));
+    await send(cardMessage(buildProgressCard('Generating Azure DevOps work item drafts...', 1, 2)));
 
-    const projectKey = data.projectKey || config.jiraProjectKey;
-    const { tickets } = await generateTickets(prd, projectKey);
+    const { workItems } = await generateWorkItems(prd);
 
-    if (!tickets || tickets.length === 0) {
-      await send(cardMessage(buildErrorCard('No tickets generated.')));
+    if (!workItems || workItems.length === 0) {
+      await send(cardMessage(buildErrorCard('No work items generated.')));
       return;
     }
 
-    const ticketsId = `tickets_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    storage.set(ticketsId, tickets);
+    const workItemsId = `workitems_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    storage.set(workItemsId, workItems);
 
     if (activity) {
       const conversationId = activity.conversation.id;
       const ctx = getConversationContext(conversationId);
-      ctx.stage = 'tickets_done';
-      ctx.ticketsId = ticketsId;
+      ctx.stage = 'work_items_done';
+      ctx.workItemsId = workItemsId;
       setConversationContext(conversationId, ctx);
     }
 
-    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, ticketsId)));
+    await send(cardMessage(buildWorkItemDraftsCard(workItems, workItemsId)));
   } catch (error) {
-    console.error('[generateTickets] Error:', error);
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to generate tickets'))));
+    console.error('[generateWorkItems] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to generate work items'))));
   }
 }
 
 async function handleShowEditMenu(send, data) {
   try {
-    const tickets = storage.get(data.ticketsId);
-    if (!tickets) { await send(cardMessage(buildErrorCard('Ticket data expired.'))); return; }
-    await send(cardMessage(buildEditTicketMenuCard(tickets, data.ticketsId, data.projectKey)));
+    const workItems = storage.get(data.workItemsId);
+    if (!workItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
+    await send(cardMessage(buildEditWorkItemMenuCard(workItems, data.workItemsId)));
   } catch (error) {
     await send(cardMessage(buildErrorCard(formatError(error, 'Failed to show edit menu'))));
   }
 }
 
-async function handleEditTicket(send, data) {
+async function handleEditWorkItem(send, data) {
   try {
-    const tickets = storage.get(data.ticketsId);
-    if (!tickets) { await send(cardMessage(buildErrorCard('Ticket data expired.'))); return; }
-    if (data.ticketIndex < 0 || data.ticketIndex >= tickets.length) { await send(cardMessage(buildErrorCard('Invalid ticket index.'))); return; }
-    await send(cardMessage(buildEditTicketCard(tickets[data.ticketIndex], data.ticketIndex, data.ticketsId, data.projectKey)));
+    const workItems = storage.get(data.workItemsId);
+    if (!workItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
+    if (data.workItemIndex < 0 || data.workItemIndex >= workItems.length) { await send(cardMessage(buildErrorCard('Invalid work item index.'))); return; }
+    await send(cardMessage(buildEditWorkItemCard(workItems[data.workItemIndex], data.workItemIndex, data.workItemsId)));
   } catch (error) {
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to load ticket'))));
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to load work item'))));
   }
 }
 
-async function handleSaveTicketEdit(send, data) {
+async function handleSaveWorkItemEdit(send, data) {
   try {
-    const tickets = storage.get(data.ticketsId);
-    if (!tickets) { await send(cardMessage(buildErrorCard('Ticket data expired.'))); return; }
+    const workItems = storage.get(data.workItemsId);
+    if (!workItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
 
-    const ticket = tickets[data.ticketIndex];
-    if (data.editTitle) ticket.fields.summary = data.editTitle;
-    if (data.editDescription !== undefined) ticket.fields.description = plainTextToAdf(data.editDescription);
-    if (data.editPriority) ticket.fields.priority = { name: data.editPriority };
+    const wi = workItems[data.workItemIndex];
+    if (data.editTitle) wi.title = data.editTitle;
+    if (data.editDescription !== undefined) wi.description = data.editDescription;
+    if (data.editPriority) wi.priority = parseInt(data.editPriority, 10);
+    if (data.editType) wi.workItemType = data.editType;
+    if (data.editTags !== undefined) wi.tags = data.editTags;
 
-    storage.set(data.ticketsId, tickets);
-    const projectKey = data.projectKey || config.jiraProjectKey;
-    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, data.ticketsId)));
+    storage.set(data.workItemsId, workItems);
+    await send(cardMessage(buildWorkItemDraftsCard(workItems, data.workItemsId)));
   } catch (error) {
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to save ticket'))));
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to save work item'))));
   }
 }
 
-async function handleCancelTicketEdit(send, data) {
+async function handleCancelWorkItemEdit(send, data) {
   try {
-    const tickets = storage.get(data.ticketsId);
-    if (!tickets) { await send(cardMessage(buildErrorCard('Ticket data expired.'))); return; }
-    const projectKey = data.projectKey || config.jiraProjectKey;
-    await send(cardMessage(buildTicketDraftsCard(tickets, projectKey, data.ticketsId)));
+    const workItems = storage.get(data.workItemsId);
+    if (!workItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
+    await send(cardMessage(buildWorkItemDraftsCard(workItems, data.workItemsId)));
   } catch (error) {
     await send(cardMessage(buildErrorCard(formatError(error, 'Failed to return to drafts'))));
   }
 }
 
-async function handleSubmitSelectedToJira(send, data) {
+async function handleSubmitSelectedToAdo(send, data) {
   try {
-    const allTickets = storage.get(data.ticketsId);
-    if (!allTickets) { await send(cardMessage(buildErrorCard('Ticket data expired.'))); return; }
+    const allWorkItems = storage.get(data.workItemsId);
+    if (!allWorkItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
 
-    const selectedTickets = allTickets.filter((_, i) => data[`include_${i}`] !== 'false');
-    if (selectedTickets.length === 0) {
-      await send(cardMessage(buildErrorCard('No tickets selected.')));
+    const selectedWorkItems = allWorkItems.filter((_, i) => data[`include_${i}`] !== 'false');
+    if (selectedWorkItems.length === 0) {
+      await send(cardMessage(buildErrorCard('No work items selected.')));
       return;
     }
 
-    await send(cardMessage(buildProgressCard(`Submitting ${selectedTickets.length} of ${allTickets.length} tickets to Jira...`, 1, 1)));
-    const results = await submitToJira(selectedTickets);
-    await send(cardMessage(buildJiraResultCard(results)));
+    await send(cardMessage(buildProgressCard(`Submitting ${selectedWorkItems.length} of ${allWorkItems.length} work items to Azure DevOps...`, 1, 1)));
+    const results = await submitToAdo(selectedWorkItems);
+    await send(cardMessage(buildAdoResultCard(results)));
   } catch (error) {
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Jira'))));
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Azure DevOps'))));
   }
 }
 
-async function handleSubmitToJira(send, data) {
+async function handleSubmitToAdo(send, data) {
   try {
-    const tickets = storage.get(data.ticketsId);
-    if (!tickets) { await send(cardMessage(buildErrorCard('Ticket data expired.'))); return; }
-    await send(cardMessage(buildProgressCard('Submitting tickets to Jira...', 1, 1)));
-    const results = await submitToJira(tickets);
-    await send(cardMessage(buildJiraResultCard(results)));
+    const workItems = storage.get(data.workItemsId);
+    if (!workItems) { await send(cardMessage(buildErrorCard('Work item data expired.'))); return; }
+    await send(cardMessage(buildProgressCard('Submitting work items to Azure DevOps...', 1, 1)));
+    const results = await submitToAdo(workItems);
+    await send(cardMessage(buildAdoResultCard(results)));
   } catch (error) {
-    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Jira'))));
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Azure DevOps'))));
   }
 }
 

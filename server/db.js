@@ -60,6 +60,21 @@ db.exec(`
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS figma_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL UNIQUE,
+    figma_user_id TEXT NOT NULL,
+    handle TEXT,
+    email TEXT,
+    img_url TEXT,
+    access_token_enc TEXT NOT NULL,
+    refresh_token_enc TEXT NOT NULL,
+    token_expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  );
 `);
 
 // Idempotent migrations for inline comments
@@ -142,6 +157,49 @@ export function updateTokens(sessionId, { accessToken, refreshToken, expiresIn }
 
 export function deleteJiraConnection(sessionId) {
   db.prepare('DELETE FROM jira_connections WHERE session_id = ?').run(sessionId);
+}
+
+// --- Figma Connections ---
+
+export function saveFigmaConnection(sessionId, { figmaUserId, handle, email, imgUrl, accessToken, refreshToken, expiresIn }) {
+  const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+  const stmt = db.prepare(`
+    INSERT INTO figma_connections (session_id, figma_user_id, handle, email, img_url, access_token_enc, refresh_token_enc, token_expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET
+      figma_user_id = excluded.figma_user_id,
+      handle = excluded.handle,
+      email = excluded.email,
+      img_url = excluded.img_url,
+      access_token_enc = excluded.access_token_enc,
+      refresh_token_enc = excluded.refresh_token_enc,
+      token_expires_at = excluded.token_expires_at,
+      updated_at = datetime('now')
+  `);
+  stmt.run(sessionId, figmaUserId, handle, email, imgUrl, encrypt(accessToken), encrypt(refreshToken), expiresAt);
+}
+
+export function getFigmaConnection(sessionId) {
+  const row = db.prepare('SELECT * FROM figma_connections WHERE session_id = ?').get(sessionId);
+  if (!row) return null;
+  return {
+    ...row,
+    accessToken: decrypt(row.access_token_enc),
+    refreshToken: decrypt(row.refresh_token_enc),
+  };
+}
+
+export function updateFigmaTokens(sessionId, { accessToken, expiresIn }) {
+  const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+  db.prepare(`
+    UPDATE figma_connections
+    SET access_token_enc = ?, token_expires_at = ?, updated_at = datetime('now')
+    WHERE session_id = ?
+  `).run(encrypt(accessToken), expiresAt, sessionId);
+}
+
+export function deleteFigmaConnection(sessionId) {
+  db.prepare('DELETE FROM figma_connections WHERE session_id = ?').run(sessionId);
 }
 
 export default db;

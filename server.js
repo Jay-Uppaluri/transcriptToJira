@@ -8,8 +8,9 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import { createRequire } from 'module';
-import db, { createSession, getSession, saveJiraConnection, getJiraConnection, deleteJiraConnection } from './server/db.js';
+import db, { createSession, getSession, saveJiraConnection, getJiraConnection, deleteJiraConnection, saveFigmaConnection, getFigmaConnection, deleteFigmaConnection } from './server/db.js';
 import { getAuthorizationUrl, exchangeCodeForTokens, getAccessibleResources, getValidAccessToken } from './server/jiraAuth.js';
+import { getFigmaAuthorizationUrl, exchangeFigmaCodeForTokens, getFigmaUserInfo, getValidFigmaAccessToken } from './server/figmaAuth.js';
 import { authenticateToken, signToken } from './middleware/auth.js';
 import { TEST_PRD, getTestTickets } from './server/testData.js';
 
@@ -17,6 +18,7 @@ import { TEST_PRD, getTestTickets } from './server/testData.js';
 const require = createRequire(import.meta.url);
 const { generatePRD: sharedGeneratePRD } = require('./shared/prdService.cjs');
 const { generateTickets: sharedGenerateTickets, submitToJira: sharedSubmitToJira, buildJiraAuthFromEnv } = require('./shared/ticketService.cjs');
+const { getCurrentUser: getFigmaCurrentUser, getRecentFiles, getFileStructure, getNodes, getNodeImages, postComment, getComments, getTextContent, parseFigmaUrl, queuePluginCommand, getPendingCommands, completeCommand, getCommandStatus } = require('./shared/figmaService.cjs');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -150,7 +152,7 @@ app.get('/auth/callback', async (req, res) => {
       expiresIn: expires_in,
     });
 
-    res.redirect('/');
+    res.redirect('/app');
   } catch (err) {
     console.error('OAuth callback error:', err);
     res.status(500).send(`OAuth error: ${err.message}`);
@@ -195,6 +197,199 @@ app.get('/api/jira/projects', async (req, res) => {
     console.error('Projects fetch error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ==================== Figma OAuth Routes ====================
+
+app.get('/auth/figma/login', (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex');
+  res.cookie('figma_oauth_state', state, { httpOnly: true, sameSite: 'lax', maxAge: 10 * 60 * 1000 });
+  res.redirect(getFigmaAuthorizationUrl(state));
+});
+
+app.get('/auth/figma/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    const savedState = req.cookies.figma_oauth_state;
+    res.clearCookie('figma_oauth_state');
+
+    if (!code || !state || state !== savedState) {
+      return res.status(400).send('Invalid Figma OAuth callback — state mismatch or missing code.');
+    }
+
+    const tokens = await exchangeFigmaCodeForTokens(code);
+    const { access_token, refresh_token, expires_in } = tokens;
+
+    const userInfo = await getFigmaUserInfo(access_token);
+
+    saveFigmaConnection(req.sessionId, {
+      figmaUserId: userInfo.id,
+      handle: userInfo.handle,
+      email: userInfo.email || '',
+      imgUrl: userInfo.img_url || '',
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresIn: expires_in,
+    });
+
+    res.redirect('/app');
+  } catch (err) {
+    console.error('Figma OAuth callback error:', err);
+    res.status(500).send(`Figma OAuth error: ${err.message}`);
+  }
+});
+
+app.get('/auth/figma/status', (req, res) => {
+  const conn = getFigmaConnection(req.sessionId);
+  if (!conn) return res.json({ connected: false });
+  res.json({
+    connected: true,
+    handle: conn.handle,
+    email: conn.email,
+    imgUrl: conn.img_url,
+  });
+});
+
+app.post('/auth/figma/disconnect', (req, res) => {
+  deleteFigmaConnection(req.sessionId);
+  res.json({ ok: true });
+});
+
+// ==================== Figma API Routes ====================
+
+// Debug endpoint — shows what /me returns so we can understand the account structure
+app.get('/api/figma/debug', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const me = await getFigmaCurrentUser(tokenInfo.accessToken);
+    res.json({ me, tokenInfo: { userId: tokenInfo.userId, handle: tokenInfo.handle } });
+  } catch (err) {
+    console.error('Figma debug error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/figma/files', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const files = await getRecentFiles(tokenInfo.accessToken);
+    res.json({ files });
+  } catch (err) {
+    console.error('Figma files error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/figma/file/:fileKey', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const structure = await getFileStructure(tokenInfo.accessToken, req.params.fileKey);
+    res.json(structure);
+  } catch (err) {
+    console.error('Figma file structure error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/figma/file/:fileKey/nodes', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const { ids } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Node IDs required (ids query param)' });
+    const nodes = await getNodes(tokenInfo.accessToken, req.params.fileKey, ids);
+    res.json({ nodes });
+  } catch (err) {
+    console.error('Figma nodes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/figma/file/:fileKey/images', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const { ids, format, scale } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Node IDs required (ids query param)' });
+    const images = await getNodeImages(tokenInfo.accessToken, req.params.fileKey, ids, { format, scale: scale ? Number(scale) : undefined });
+    res.json({ images });
+  } catch (err) {
+    console.error('Figma images error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/figma/file/:fileKey/text', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const { ids } = req.query;
+    if (!ids) return res.status(400).json({ error: 'Node IDs required (ids query param)' });
+    const textNodes = await getTextContent(tokenInfo.accessToken, req.params.fileKey, ids);
+    res.json({ textNodes });
+  } catch (err) {
+    console.error('Figma text content error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/figma/file/:fileKey/comments', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const comments = await getComments(tokenInfo.accessToken, req.params.fileKey);
+    res.json({ comments });
+  } catch (err) {
+    console.error('Figma comments error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/figma/file/:fileKey/comments', async (req, res) => {
+  try {
+    const tokenInfo = await getValidFigmaAccessToken(req.sessionId);
+    if (!tokenInfo) return res.status(401).json({ error: 'Not connected to Figma' });
+    const { message, nodeId, x, y } = req.body;
+    if (!message) return res.status(400).json({ error: 'Comment message is required' });
+    const comment = await postComment(tokenInfo.accessToken, req.params.fileKey, message, { nodeId, x, y });
+    res.json(comment);
+  } catch (err) {
+    console.error('Figma post comment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== Figma Plugin Command Queue ====================
+
+// Plugin polls for pending commands
+app.get('/api/figma/plugin/commands/:fileKey', (req, res) => {
+  const commands = getPendingCommands(req.params.fileKey);
+  res.json({ commands });
+});
+
+// Plugin reports command completion
+app.post('/api/figma/plugin/commands/:fileKey/:commandId/complete', (req, res) => {
+  const { result } = req.body;
+  completeCommand(req.params.fileKey, req.params.commandId, result);
+  res.json({ ok: true });
+});
+
+// Queue a new command (from bot or web app)
+app.post('/api/figma/plugin/commands/:fileKey', authenticateToken, (req, res) => {
+  const { command, params } = req.body;
+  if (!command) return res.status(400).json({ error: 'Command is required' });
+  const commandId = queuePluginCommand(req.params.fileKey, command, params || {});
+  res.json({ commandId });
+});
+
+// Check command status
+app.get('/api/figma/plugin/commands/:fileKey/:commandId', (req, res) => {
+  const status = getCommandStatus(req.params.fileKey, req.params.commandId);
+  if (!status) return res.status(404).json({ error: 'Command not found' });
+  res.json(status);
 });
 
 // ==================== PRD Routes (auth required) ====================

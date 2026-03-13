@@ -18,11 +18,13 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-export default function Sidebar({ activeSection, onSectionChange, collapsed, onToggleCollapse, onGoHome, user, testMode, onTestModeToggle, onLogout, connection, connectionLoading, onDisconnectJira }) {
+export default function Sidebar({ activeSection, onSectionChange, collapsed, onToggleCollapse, onGoHome, user, testMode, onTestModeToggle, onLogout, connection, connectionLoading, onDisconnectJira, figmaConnection, figmaConnectionLoading, onDisconnectFigma }) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [jiraMenuOpen, setJiraMenuOpen] = useState(false);
+  const [figmaMenuOpen, setFigmaMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
   const jiraMenuRef = useRef(null);
+  const figmaMenuRef = useRef(null);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -32,10 +34,13 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
       if (jiraMenuRef.current && !jiraMenuRef.current.contains(e.target)) {
         setJiraMenuOpen(false);
       }
+      if (figmaMenuRef.current && !figmaMenuRef.current.contains(e.target)) {
+        setFigmaMenuOpen(false);
+      }
     }
-    if (profileMenuOpen || jiraMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    if (profileMenuOpen || jiraMenuOpen || figmaMenuOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [profileMenuOpen, jiraMenuOpen]);
+  }, [profileMenuOpen, jiraMenuOpen, figmaMenuOpen]);
 
   return (
     <aside
@@ -135,6 +140,58 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
                 )}
               </div>
             </div>
+            {/* Figma */}
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-[3px] group" ref={figmaMenuRef}>
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 38 57" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 28.5C19 23.2533 23.2533 19 28.5 19C33.7467 19 38 23.2533 38 28.5C38 33.7467 33.7467 38 28.5 38C23.2533 38 19 33.7467 19 28.5Z" fill="#1ABCFE"/>
+                  <path d="M0 47.5C0 42.2533 4.25329 38 9.5 38H19V47.5C19 52.7467 14.7467 57 9.5 57C4.25329 57 0 52.7467 0 47.5Z" fill="#0ACF83"/>
+                  <path d="M19 0V19H28.5C33.7467 19 38 14.7467 38 9.5C38 4.25329 33.7467 0 28.5 0H19Z" fill="#FF7262"/>
+                  <path d="M0 9.5C0 14.7467 4.25329 19 9.5 19H19V0H9.5C4.25329 0 0 4.25329 0 9.5Z" fill="#F24E1E"/>
+                  <path d="M0 28.5C0 33.7467 4.25329 38 9.5 38H19V19H9.5C4.25329 19 0 23.2533 0 28.5Z" fill="#A259FF"/>
+                </svg>
+                <span className="text-sm text-[#37352f]">Figma</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {figmaConnectionLoading ? (
+                  <Loader2 size={12} className="animate-spin text-[#9b9a97]" />
+                ) : figmaConnection?.connected ? (
+                  <>
+                    <span className="relative text-[11px] text-[#9b9a97] cursor-default group/tip">
+                      Connected
+                      <span className="absolute bottom-full right-0 mb-1.5 hidden group-hover/tip:block whitespace-nowrap bg-[#37352f] text-white text-[11px] px-2 py-1 rounded-[4px] shadow-lg pointer-events-none">
+                        {figmaConnection.handle}
+                      </span>
+                    </span>
+                    <div className="relative">
+                      <button
+                        onClick={() => setFigmaMenuOpen(prev => !prev)}
+                        className="p-0.5 rounded-[3px] text-[#9b9a97] hover:bg-[rgba(55,53,47,0.08)]"
+                      >
+                        <MoreHorizontal size={14} />
+                      </button>
+                      {figmaMenuOpen && (
+                        <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-[6px] shadow-notion-popup py-1 z-50">
+                          <button
+                            onClick={() => { setFigmaMenuOpen(false); onDisconnectFigma(); }}
+                            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-[#e03e3e] hover:bg-[rgba(55,53,47,0.08)]"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <a
+                    href="/auth/figma/login"
+                    className="text-xs font-medium text-[#37352f] border border-[#d3d3d3] hover:border-[#b0b0b0] px-2 py-0.5 rounded-[3px]"
+                  >
+                    Connect
+                  </a>
+                )}
+              </div>
+            </div>
             {/* Teams */}
             <div className="flex items-center justify-between px-3 py-1.5 rounded-[3px]">
               <div className="flex items-center gap-2">
@@ -153,6 +210,15 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
         <div className="mt-auto border-t border-[#e9e8e4] px-2 pt-3 pb-3 flex flex-col items-center gap-1">
           <a href={connection?.connected ? undefined : '/auth/login'} title={connection?.connected ? `Jira: ${connection.siteName}` : 'Connect Jira'}>
             <img src="/icons/jira.png" alt="Jira" className={`w-4 h-4 ${connection?.connected ? '' : 'opacity-40'}`} />
+          </a>
+          <a href={figmaConnection?.connected ? undefined : '/auth/figma/login'} title={figmaConnection?.connected ? `Figma: ${figmaConnection.handle}` : 'Connect Figma'}>
+            <svg width="16" height="16" viewBox="0 0 38 57" fill="none" xmlns="http://www.w3.org/2000/svg" className={figmaConnection?.connected ? '' : 'opacity-40'}>
+              <path d="M19 28.5C19 23.2533 23.2533 19 28.5 19C33.7467 19 38 23.2533 38 28.5C38 33.7467 33.7467 38 28.5 38C23.2533 38 19 33.7467 19 28.5Z" fill="#1ABCFE"/>
+              <path d="M0 47.5C0 42.2533 4.25329 38 9.5 38H19V47.5C19 52.7467 14.7467 57 9.5 57C4.25329 57 0 52.7467 0 47.5Z" fill="#0ACF83"/>
+              <path d="M19 0V19H28.5C33.7467 19 38 14.7467 38 9.5C38 4.25329 33.7467 0 28.5 0H19Z" fill="#FF7262"/>
+              <path d="M0 9.5C0 14.7467 4.25329 19 9.5 19H19V0H9.5C4.25329 0 0 4.25329 0 9.5Z" fill="#F24E1E"/>
+              <path d="M0 28.5C0 33.7467 4.25329 38 9.5 38H19V19H9.5C4.25329 19 0 23.2533 0 28.5Z" fill="#A259FF"/>
+            </svg>
           </a>
           <img src="/icons/teams.png" alt="Teams" className="w-4 h-4 opacity-40" title="Teams (coming soon)" />
         </div>

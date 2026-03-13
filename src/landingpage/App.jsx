@@ -80,6 +80,17 @@ const OrbitingImage = ({ src, alt, size, radius, startAngle = 0, duration = 90, 
 
 export default function App() {
   const navigate = useNavigate();
+
+  // Auto-redirect to /app if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => { if (res.ok) navigate('/app', { replace: true }); })
+        .catch(() => {});
+    }
+  }, [navigate]);
+
   return (
     <div className="min-h-screen bg-white text-[#37352f] font-sans selection:bg-[rgba(45,170,219,0.3)] overflow-x-hidden">
       {/* Navigation */}

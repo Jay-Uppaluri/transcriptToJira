@@ -49,6 +49,10 @@ export default function App() {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [submittedSiteUrl, setSubmittedSiteUrl] = useState('');
 
+  // Figma state
+  const [figmaConnection, setFigmaConnection] = useState(null);
+  const [figmaConnectionLoading, setFigmaConnectionLoading] = useState(true);
+
   // Comments hook
   const { comments, loadComments, addComment, addReply, resolveComment, deleteComment } = useComments(prdId, token, prd);
 
@@ -72,6 +76,14 @@ export default function App() {
       .then(r => r.json())
       .then(data => { setConnection(data); setConnectionLoading(false); })
       .catch(() => setConnectionLoading(false));
+  }, []);
+
+  // Check Figma connection
+  useEffect(() => {
+    fetch('/auth/figma/status', fetchOpts)
+      .then(r => r.json())
+      .then(data => { setFigmaConnection(data); setFigmaConnectionLoading(false); })
+      .catch(() => setFigmaConnectionLoading(false));
   }, []);
 
   // Load projects when connected
@@ -108,6 +120,11 @@ export default function App() {
     setConnection({ connected: false });
     setProjects([]);
     setProjectKey('');
+  }
+
+  async function disconnectFigma() {
+    await fetch('/auth/figma/disconnect', { method: 'POST', ...fetchOpts });
+    setFigmaConnection({ connected: false });
   }
 
   function resetWorkflow() {
@@ -291,6 +308,9 @@ export default function App() {
           connection={connection}
           connectionLoading={connectionLoading}
           onDisconnectJira={disconnectJira}
+          figmaConnection={figmaConnection}
+          figmaConnectionLoading={figmaConnectionLoading}
+          onDisconnectFigma={disconnectFigma}
         />
 
         <div className="flex-1 overflow-y-auto">

@@ -12,6 +12,7 @@ const config = require("../config");
 const { getMeetingTranscript } = require('../services/graphService');
 const { generatePRD, generateSummary, editPRD } = require('../services/prdService');
 const { generateTickets, submitToJira } = require('../services/ticketService');
+const { getRecentFiles, getFileStructure, getNodeImages, postComment, getTextContent, parseFigmaUrl, queuePluginCommand } = require('../../shared/figmaService.cjs');
 const {
   buildPRDCard,
   buildSummaryCard,
@@ -25,6 +26,11 @@ const {
   buildHelpCard,
   buildValidationCard,
   plainTextToAdf,
+  buildFigmaFilesCard,
+  buildFigmaFramesCard,
+  buildFigmaImageCard,
+  buildFigmaCommentCard,
+  buildFigmaCommandQueuedCard,
 } = require('../services/adaptiveCards');
 
 // ─── Deduplication ───
@@ -195,6 +201,52 @@ function getDemoTranscriptsCombined() {
 
 function detectIntent(text) {
   const lower = text.toLowerCase();
+
+  // ─── Figma intents (check first since they're specific) ───
+
+  // Figma URL detection — highest priority when a Figma link is present
+  if (lower.includes('figma.com/file') || lower.includes('figma.com/design')) {
+    if (lower.includes('comment') || lower.includes('note') || lower.includes('feedback')) {
+      return 'figma_comment';
+    }
+    if (lower.includes('show') || lower.includes('preview') || lower.includes('render') || lower.includes('screenshot') || lower.includes('image')) {
+      return 'figma_image';
+    }
+    if (lower.includes('text') || lower.includes('content') || lower.includes('read') || lower.includes('what does it say')) {
+      return 'figma_text';
+    }
+    // Default: show frame structure
+    return 'figma_frames';
+  }
+
+  // "show my figma files" / "list figma files"
+  if (
+    lower.includes('figma') &&
+    (lower.includes('file') || lower.includes('project') || lower.includes('design')) &&
+    (lower.includes('show') || lower.includes('list') || lower.includes('my') || lower.includes('get') || lower.includes('recent'))
+  ) {
+    return 'figma_files';
+  }
+
+  // Figma design commands (create frame, edit text, etc.) — requires plugin
+  if (
+    lower.includes('figma') &&
+    (lower.includes('create') || lower.includes('add') || lower.includes('make') || lower.includes('design') || lower.includes('build') || lower.includes('draw')) &&
+    (lower.includes('frame') || lower.includes('component') || lower.includes('screen') || lower.includes('page') || lower.includes('layout') || lower.includes('wireframe') || lower.includes('mockup'))
+  ) {
+    return 'figma_design';
+  }
+
+  // Figma text editing via plugin
+  if (
+    lower.includes('figma') &&
+    (lower.includes('change') || lower.includes('update') || lower.includes('edit') || lower.includes('modify') || lower.includes('replace')) &&
+    (lower.includes('text') || lower.includes('copy') || lower.includes('label') || lower.includes('heading') || lower.includes('title'))
+  ) {
+    return 'figma_edit_text';
+  }
+
+  // ─── Existing intents ───
 
   // Check for "most recent meeting" / "latest meeting" PRD request
   if (
@@ -443,6 +495,35 @@ app.on('message', async ({ send, stream, activity }) => {
     case 'help':
       await send(cardMessage(buildHelpCard()));
       break;
+
+    // ─── Figma Intents ───
+
+    case 'figma_files':
+      handleFigmaFiles(send, conversationId).catch(err => console.error('[figmaFiles] Error:', err));
+      break;
+
+    case 'figma_frames':
+      handleFigmaFrames(send, cleanText, conversationId).catch(err => console.error('[figmaFrames] Error:', err));
+      break;
+
+    case 'figma_image':
+      handleFigmaImage(send, cleanText, conversationId).catch(err => console.error('[figmaImage] Error:', err));
+      break;
+
+    case 'figma_comment':
+      handleFigmaComment(send, cleanText, conversationId).catch(err => console.error('[figmaComment] Error:', err));
+      break;
+
+    case 'figma_text':
+      handleFigmaText(send, cleanText, conversationId).catch(err => console.error('[figmaText] Error:', err));
+      break;
+
+    case 'figma_design':
+    case 'figma_edit_text':
+      handleFigmaDesignCommand(send, cleanText, intent, conversationId).catch(err => console.error('[figmaDesign] Error:', err));
+      break;
+
+    // ─── Existing Intents ───
 
     case 'recent_meeting_prd':
       handleRecentMeetingPrd(send, conversationId).catch(err => console.error('[recentMeetingPrd] Error:', err));
@@ -838,6 +919,218 @@ async function handleSubmitToJira(send, data) {
   } catch (error) {
     await send(cardMessage(buildErrorCard(formatError(error, 'Failed to submit to Jira'))));
   }
+}
+
+// ─── Figma Handlers ───
+
+function getFigmaAccessToken() {
+  // In the bot context, we use env var for Figma access
+  // In production, this would look up the user's stored OAuth token
+  const token = process.env.FIGMA_BOT_ACCESS_TOKEN || process.env.FIGMA_ACCESS_TOKEN;
+  if (!token) {
+    throw new Error('Figma is not connected. Please connect your Figma account in the Cortex web app first.');
+  }
+  return token;
+}
+
+async function handleFigmaFiles(send, conversationId) {
+  try {
+    await send(cardMessage(buildProgressCard('Fetching your Figma files...', 1, 1)));
+    const accessToken = getFigmaAccessToken();
+    const files = await getRecentFiles(accessToken);
+
+    if (!files.length) {
+      await send(new MessageActivity(
+        "I couldn't list your Figma files automatically (this requires a Figma team plan).\n\n" +
+        "Instead, just **share a Figma URL** with me and I can:\n" +
+        "- Show the frame structure\n" +
+        "- Render a preview image\n" +
+        "- Read text content\n" +
+        "- Post comments\n\n" +
+        "Example: *\"Show frames from https://www.figma.com/file/abc123/MyDesign\"*"
+      ));
+      return;
+    }
+
+    await send(cardMessage(buildFigmaFilesCard(files)));
+    console.log(`[figmaFiles] Listed ${files.length} files for conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[figmaFiles] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to fetch Figma files'))));
+  }
+}
+
+async function handleFigmaFrames(send, text, conversationId) {
+  try {
+    const parsed = extractFigmaUrl(text);
+    if (!parsed) {
+      await send(new MessageActivity("I couldn't find a valid Figma URL in your message. Please share a link like `https://www.figma.com/file/XXXXX/FileName`"));
+      return;
+    }
+
+    await send(cardMessage(buildProgressCard('Loading Figma file structure...', 1, 1)));
+    const accessToken = getFigmaAccessToken();
+    const fileInfo = await getFileStructure(accessToken, parsed.fileKey);
+    await send(cardMessage(buildFigmaFramesCard(fileInfo, parsed.fileKey)));
+    console.log(`[figmaFrames] Loaded structure for file ${parsed.fileKey} in conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[figmaFrames] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to load Figma file'))));
+  }
+}
+
+async function handleFigmaImage(send, text, conversationId) {
+  try {
+    const parsed = extractFigmaUrl(text);
+    if (!parsed) {
+      await send(new MessageActivity("Please share a Figma URL to render. Include a `?node-id=` parameter to render a specific frame."));
+      return;
+    }
+
+    await send(cardMessage(buildProgressCard('Rendering Figma frame...', 1, 1)));
+    const accessToken = getFigmaAccessToken();
+
+    let nodeId = parsed.nodeId;
+    let frameName = 'Frame';
+
+    // If no specific node, get the first frame from the first page
+    if (!nodeId) {
+      const fileInfo = await getFileStructure(accessToken, parsed.fileKey);
+      const firstPage = fileInfo.pages[0];
+      if (firstPage && firstPage.frames.length > 0) {
+        nodeId = firstPage.frames[0].id;
+        frameName = firstPage.frames[0].name;
+      } else {
+        await send(new MessageActivity("This file doesn't have any frames to render. Try sharing a URL with a specific `?node-id=` parameter."));
+        return;
+      }
+    }
+
+    const images = await getNodeImages(accessToken, parsed.fileKey, nodeId, { scale: 2 });
+    const imageUrl = Object.values(images)[0];
+    await send(cardMessage(buildFigmaImageCard(imageUrl, frameName, parsed.fileKey)));
+    console.log(`[figmaImage] Rendered node ${nodeId} for conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[figmaImage] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to render Figma frame'))));
+  }
+}
+
+async function handleFigmaComment(send, text, conversationId) {
+  try {
+    const parsed = extractFigmaUrl(text);
+    if (!parsed) {
+      await send(new MessageActivity("Please share a Figma URL to comment on."));
+      return;
+    }
+
+    // Extract the comment message — remove the Figma URL and common prefixes
+    let commentMessage = text
+      .replace(/https?:\/\/[^\s]+/g, '')
+      .replace(/^(add|post|leave|write)\s+(a\s+)?(comment|note|feedback)\s*(on|to|for)?\s*/i, '')
+      .replace(/^(comment|note|feedback)\s*(on|to|for)?\s*/i, '')
+      .replace(/^\s*[:—-]\s*/, '')
+      .trim();
+
+    if (!commentMessage) {
+      await send(new MessageActivity("What would you like the comment to say? Please include your message along with the Figma link."));
+      return;
+    }
+
+    await send(cardMessage(buildProgressCard('Posting comment to Figma...', 1, 1)));
+    const accessToken = getFigmaAccessToken();
+    const result = await postComment(accessToken, parsed.fileKey, commentMessage, { nodeId: parsed.nodeId });
+    await send(cardMessage(buildFigmaCommentCard({ message: commentMessage }, parsed.fileKey)));
+    console.log(`[figmaComment] Posted comment on file ${parsed.fileKey} in conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[figmaComment] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to post Figma comment'))));
+  }
+}
+
+async function handleFigmaText(send, text, conversationId) {
+  try {
+    const parsed = extractFigmaUrl(text);
+    if (!parsed) {
+      await send(new MessageActivity("Please share a Figma URL to read text from."));
+      return;
+    }
+
+    await send(cardMessage(buildProgressCard('Reading text from Figma...', 1, 1)));
+    const accessToken = getFigmaAccessToken();
+
+    let nodeId = parsed.nodeId;
+    if (!nodeId) {
+      const fileInfo = await getFileStructure(accessToken, parsed.fileKey);
+      const firstPage = fileInfo.pages[0];
+      if (firstPage && firstPage.frames.length > 0) {
+        nodeId = firstPage.frames[0].id;
+      } else {
+        await send(new MessageActivity("No frames found in this file."));
+        return;
+      }
+    }
+
+    const textNodes = await getTextContent(accessToken, parsed.fileKey, nodeId);
+    if (!textNodes.length) {
+      await send(new MessageActivity("No text content found in this frame."));
+      return;
+    }
+
+    let response = `📝 **Text content from Figma:**\n\n`;
+    for (const node of textNodes.slice(0, 20)) {
+      response += `• **${node.name}**: ${node.characters}\n`;
+    }
+    if (textNodes.length > 20) {
+      response += `\n_...and ${textNodes.length - 20} more text elements_`;
+    }
+
+    await send(new MessageActivity(response));
+    console.log(`[figmaText] Read ${textNodes.length} text nodes for conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[figmaText] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to read text from Figma'))));
+  }
+}
+
+async function handleFigmaDesignCommand(send, text, intent, conversationId) {
+  try {
+    // Extract Figma URL if present
+    const parsed = extractFigmaUrl(text);
+    const fileKey = parsed?.fileKey;
+
+    if (!fileKey) {
+      await send(new MessageActivity(
+        "To make design changes, I need a Figma file URL. Please share a link like `https://www.figma.com/file/XXXXX/FileName`.\n\n" +
+        "Also, make sure the **Cortex plugin** is running in that Figma file."
+      ));
+      return;
+    }
+
+    // Determine the command to queue based on intent and text
+    let command, params;
+
+    if (intent === 'figma_edit_text') {
+      command = 'editText';
+      params = { instruction: text.replace(/https?:\/\/[^\s]+/g, '').trim(), nodeId: parsed.nodeId };
+    } else {
+      command = 'createDesign';
+      params = { instruction: text.replace(/https?:\/\/[^\s]+/g, '').trim(), nodeId: parsed.nodeId };
+    }
+
+    const commandId = queuePluginCommand(fileKey, command, params);
+    await send(cardMessage(buildFigmaCommandQueuedCard(commandId, command, fileKey)));
+    console.log(`[figmaDesign] Queued command ${command} (${commandId}) for file ${fileKey} in conversation ${conversationId}`);
+  } catch (error) {
+    console.error('[figmaDesign] Error:', error);
+    await send(cardMessage(buildErrorCard(formatError(error, 'Failed to queue Figma design command'))));
+  }
+}
+
+function extractFigmaUrl(text) {
+  const urlMatch = text.match(/(https?:\/\/[^\s]*figma\.com\/(?:file|design)\/[^\s]+)/i);
+  if (!urlMatch) return null;
+  return parseFigmaUrl(urlMatch[1]);
 }
 
 // ─── Feedback Handler ───

@@ -812,6 +812,207 @@ function buildValidationCard(message) {
   ]);
 }
 
+// ─── Figma Cards ───
+
+function buildFigmaFilesCard(files) {
+  const body = [
+    ...headerBlock('🎨', 'Your Figma Files', `${files.length} recent files`),
+    divider(),
+  ];
+
+  for (const file of files.slice(0, 10)) {
+    const modified = file.last_modified ? new Date(file.last_modified).toLocaleDateString() : '';
+    body.push({
+      type: 'ColumnSet',
+      spacing: 'Small',
+      columns: [
+        {
+          type: 'Column',
+          width: 'stretch',
+          items: [
+            {
+              type: 'TextBlock',
+              text: `**${file.name}**`,
+              wrap: true,
+            },
+            {
+              type: 'TextBlock',
+              text: `${file.project_name || ''} ${modified ? `• ${modified}` : ''}`,
+              size: 'Small',
+              isSubtle: true,
+              spacing: 'None',
+              wrap: true,
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          width: 'auto',
+          items: [{
+            type: 'TextBlock',
+            text: `[Open](https://www.figma.com/file/${file.key})`,
+            size: 'Small',
+          }],
+          verticalContentAlignment: 'Center',
+        },
+      ],
+    });
+  }
+
+  return card(body);
+}
+
+function buildFigmaFramesCard(fileInfo, fileKey) {
+  const body = [
+    ...headerBlock('🎨', `Figma: ${fileInfo.name}`, `${fileInfo.pages.length} page(s)`),
+    divider(),
+  ];
+
+  for (const page of fileInfo.pages) {
+    body.push({
+      type: 'TextBlock',
+      text: `**📄 ${page.name}**`,
+      spacing: 'Medium',
+      weight: 'Bolder',
+    });
+
+    if (page.frames.length === 0) {
+      body.push({
+        type: 'TextBlock',
+        text: '_No frames on this page_',
+        isSubtle: true,
+        spacing: 'Small',
+      });
+    } else {
+      for (const frame of page.frames.slice(0, 10)) {
+        const dims = frame.width && frame.height ? ` (${Math.round(frame.width)}×${Math.round(frame.height)})` : '';
+        body.push({
+          type: 'TextBlock',
+          text: `• **${frame.name}**${dims} — ${frame.type}`,
+          wrap: true,
+          spacing: 'None',
+          size: 'Small',
+        });
+      }
+      if (page.frames.length > 10) {
+        body.push({
+          type: 'TextBlock',
+          text: `_...and ${page.frames.length - 10} more frames_`,
+          isSubtle: true,
+          spacing: 'None',
+          size: 'Small',
+        });
+      }
+    }
+  }
+
+  body.push(divider());
+  body.push({
+    type: 'TextBlock',
+    text: `[Open in Figma](https://www.figma.com/file/${fileKey})`,
+    spacing: 'Medium',
+  });
+
+  return card(body);
+}
+
+function buildFigmaImageCard(imageUrl, frameName, fileKey) {
+  const body = [
+    ...headerBlock('🖼️', frameName || 'Figma Frame', 'Rendered preview'),
+    divider(),
+  ];
+
+  if (imageUrl) {
+    body.push({
+      type: 'Image',
+      url: imageUrl,
+      size: 'Large',
+      altText: frameName || 'Figma frame preview',
+      spacing: 'Medium',
+    });
+  } else {
+    body.push({
+      type: 'TextBlock',
+      text: '_Could not render this frame._',
+      isSubtle: true,
+      spacing: 'Medium',
+    });
+  }
+
+  if (fileKey) {
+    body.push({
+      type: 'TextBlock',
+      text: `[Open in Figma](https://www.figma.com/file/${fileKey})`,
+      spacing: 'Medium',
+      size: 'Small',
+    });
+  }
+
+  return card(body);
+}
+
+function buildFigmaCommentCard(comment, fileKey) {
+  const body = [
+    ...headerBlock('💬', 'Comment Posted', `On Figma file`),
+    divider(),
+    {
+      type: 'TextBlock',
+      text: `**Message:** ${comment.message || 'Comment posted successfully'}`,
+      wrap: true,
+      spacing: 'Medium',
+    },
+  ];
+
+  if (fileKey) {
+    body.push({
+      type: 'TextBlock',
+      text: `[View in Figma](https://www.figma.com/file/${fileKey})`,
+      spacing: 'Medium',
+      size: 'Small',
+    });
+  }
+
+  return card(body);
+}
+
+function buildFigmaCommandQueuedCard(commandId, command, fileKey) {
+  const body = [
+    ...headerBlock('🔧', 'Design Command Queued', 'Waiting for Figma plugin to execute'),
+    divider(),
+    {
+      type: 'TextBlock',
+      text: `**Command:** ${command}`,
+      wrap: true,
+      spacing: 'Medium',
+    },
+    {
+      type: 'TextBlock',
+      text: `**Status:** Pending — make sure the Cortex plugin is running in Figma`,
+      wrap: true,
+      spacing: 'Small',
+      isSubtle: true,
+    },
+    {
+      type: 'TextBlock',
+      text: `Command ID: \`${commandId}\``,
+      size: 'Small',
+      isSubtle: true,
+      spacing: 'Small',
+    },
+  ];
+
+  if (fileKey) {
+    body.push({
+      type: 'TextBlock',
+      text: `[Open in Figma](https://www.figma.com/file/${fileKey})`,
+      spacing: 'Medium',
+      size: 'Small',
+    });
+  }
+
+  return card(body);
+}
+
 module.exports = {
   buildProgressCard,
   buildErrorCard,
@@ -827,4 +1028,10 @@ module.exports = {
   buildValidationCard,
   adfToPlainText,
   plainTextToAdf,
+  // Figma cards
+  buildFigmaFilesCard,
+  buildFigmaFramesCard,
+  buildFigmaImageCard,
+  buildFigmaCommentCard,
+  buildFigmaCommandQueuedCard,
 };

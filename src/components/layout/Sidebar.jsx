@@ -18,7 +18,7 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-export default function Sidebar({ activeSection, onSectionChange, collapsed, onToggleCollapse, onGoHome, user, testMode, onTestModeToggle, onLogout, connection, connectionLoading, onDisconnectJira }) {
+export default function Sidebar({ activeSection, onSectionChange, collapsed, onToggleCollapse, onGoHome, user, testMode, onTestModeToggle, onLogout, connection, connectionLoading, onDisconnectJira, provider }) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [jiraMenuOpen, setJiraMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
@@ -89,11 +89,11 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
         <div className="mt-auto border-t border-[#e9e8e4] px-2 pt-3 pb-1">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-[#9b9a97]">Connected Apps</p>
           <div className="flex flex-col gap-0.5">
-            {/* Jira */}
+            {/* Ticket Provider */}
             <div className="flex items-center justify-between px-3 py-1.5 rounded-[3px] group" ref={jiraMenuRef}>
               <div className="flex items-center gap-2">
-                <img src="/icons/jira.png" alt="Jira" className="w-4 h-4" />
-                <span className="text-sm text-[#37352f]">Jira</span>
+                <img src={provider?.icon || '/icons/jira.png'} alt={provider?.displayName || 'Tickets'} className="w-4 h-4" />
+                <span className="text-sm text-[#37352f]">{provider?.displayName || 'Tickets'}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 {connectionLoading ? (
@@ -151,8 +151,8 @@ export default function Sidebar({ activeSection, onSectionChange, collapsed, onT
 
       {collapsed && (
         <div className="mt-auto border-t border-[#e9e8e4] px-2 pt-3 pb-3 flex flex-col items-center gap-1">
-          <a href={connection?.connected ? undefined : '/auth/login'} title={connection?.connected ? `Jira: ${connection.siteName}` : 'Connect Jira'}>
-            <img src="/icons/jira.png" alt="Jira" className={`w-4 h-4 ${connection?.connected ? '' : 'opacity-40'}`} />
+          <a href={connection?.connected ? undefined : (provider?.name === 'jira' ? '/auth/login' : undefined)} title={connection?.connected ? `${provider?.displayName}: ${connection.siteName}` : `Connect ${provider?.displayName || 'Tickets'}`}>
+            <img src={provider?.icon || '/icons/jira.png'} alt={provider?.displayName || 'Tickets'} className={`w-4 h-4 ${connection?.connected || provider?.name === 'ado' ? '' : 'opacity-40'}`} />
           </a>
           <img src="/icons/teams.png" alt="Teams" className="w-4 h-4 opacity-40" title="Teams (coming soon)" />
         </div>

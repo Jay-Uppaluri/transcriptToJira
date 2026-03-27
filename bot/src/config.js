@@ -9,11 +9,10 @@ const config = {
   // Graph API
   graphClientSecret: process.env.GRAPH_CLIENT_SECRET || process.env.CLIENT_SECRET,
 
-  // Jira
-  jiraBaseUrl: process.env.JIRA_BASE_URL,
-  jiraUserEmail: process.env.JIRA_USER_EMAIL,
-  jiraApiToken: process.env.JIRA_API_TOKEN,
-  jiraProjectKey: process.env.JIRA_PROJECT_KEY || 'KAN',
+  // Azure DevOps
+  adoOrgUrl: process.env.ADO_ORG_URL,
+  adoProject: process.env.ADO_PROJECT,
+  adoPat: process.env.ADO_PAT,
 };
 
 module.exports = config;

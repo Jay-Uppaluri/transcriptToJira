@@ -15,8 +15,13 @@ import { TEST_PRD, getTestTickets } from './server/testData.js';
 
 // Shared services (CJS — used by both web app and Teams bot)
 const require = createRequire(import.meta.url);
-const { generatePRD: sharedGeneratePRD } = require('./shared/prdService.cjs');
-const { generateTickets: sharedGenerateTickets, submitToJira: sharedSubmitToJira, buildJiraAuthFromEnv } = require('./shared/ticketService.cjs');
+const { generatePRD: sharedGeneratePRD, countWords, LONG_TRANSCRIPT_THRESHOLD } = require('./shared/prdService.cjs');
+const { generateTickets: sharedGenerateTickets, submitTickets: sharedSubmitTickets, buildAuthFromEnv, getProviderInfo, PROVIDER } = require('./shared/ticketProvider.cjs');
+
+// Max transcript length (words). Default: 60,000 (~1 hour meeting)
+const MAX_TRANSCRIPT_WORDS = parseInt(process.env.MAX_TRANSCRIPT_WORDS || '60000', 10);
+// Keep direct Jira imports for OAuth-specific routes
+const { buildJiraAuthFromEnv } = require('./shared/ticketService.cjs');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -171,6 +176,12 @@ app.get('/auth/status', (req, res) => {
 app.post('/auth/disconnect', (req, res) => {
   deleteJiraConnection(req.sessionId);
   res.json({ ok: true });
+});
+
+// ==================== Provider Info Route ====================
+
+app.get('/api/provider', (req, res) => {
+  res.json(getProviderInfo());
 });
 
 // ==================== Jira Projects Route ====================
@@ -381,11 +392,19 @@ app.patch('/api/comments/:id/resolve', authenticateToken, (req, res) => {
 
 // ==================== Existing Routes (now auth-gated) ====================
 
-// Step 1: Transcript -> PRD
+// Step 1: Transcript -> PRD (supports SSE for long transcripts)
 app.post('/api/generate-prd', authenticateToken, async (req, res) => {
   try {
-    const { transcript, projectKey, testMode } = req.body;
+    const { transcript, projectKey, testMode, stream: useSSE } = req.body;
     if (!transcript) return res.status(400).json({ error: 'Transcript is required' });
+
+    // Word limit check
+    const wordCount = countWords(transcript);
+    if (wordCount > MAX_TRANSCRIPT_WORDS) {
+      return res.status(413).json({
+        error: `Transcript too long: ${wordCount.toLocaleString()} words (limit: ${MAX_TRANSCRIPT_WORDS.toLocaleString()}). Please trim the transcript or split into separate meetings.`,
+      });
+    }
 
     if (testMode) {
       const prdContent = TEST_PRD;
@@ -396,17 +415,51 @@ app.post('/api/generate-prd', authenticateToken, async (req, res) => {
       return res.json({ prd: prdContent, prdId: result.lastInsertRowid, title });
     }
 
-    const { prd: prdContent, title } = await sharedGeneratePRD(transcript, process.env.OPENAI_API_KEY);
+    // SSE mode for long transcripts: stream progress events
+    if (useSSE && wordCount > LONG_TRANSCRIPT_THRESHOLD) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
 
-    // Auto-save PRD to database
+      const sendEvent = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const onProgress = (progress) => {
+        sendEvent({ type: 'progress', ...progress });
+      };
+
+      sendEvent({ type: 'progress', phase: 'start', message: `Processing ${wordCount.toLocaleString()} word transcript...`, totalWords: wordCount });
+
+      const { prd: prdContent, title, usage, warnings } = await sharedGeneratePRD(transcript, process.env.OPENAI_API_KEY, { onProgress });
+
+      const result = db.prepare(
+        'INSERT INTO prds (title, transcript, content, project_key, created_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(title, transcript, prdContent, projectKey || 'KAN', req.user.id);
+
+      sendEvent({ type: 'complete', prd: prdContent, prdId: result.lastInsertRowid, title, usage, warnings });
+      res.end();
+      return;
+    }
+
+    // Standard JSON response for short transcripts
+    const { prd: prdContent, title, usage, warnings } = await sharedGeneratePRD(transcript, process.env.OPENAI_API_KEY);
+
     const result = db.prepare(
       'INSERT INTO prds (title, transcript, content, project_key, created_by) VALUES (?, ?, ?, ?, ?)'
     ).run(title, transcript, prdContent, projectKey || 'KAN', req.user.id);
 
-    res.json({ prd: prdContent, prdId: result.lastInsertRowid, title });
+    res.json({ prd: prdContent, prdId: result.lastInsertRowid, title, usage, warnings });
   } catch (err) {
     console.error('PRD generation error:', err);
-    res.status(500).json({ error: err.message });
+    // If we're in SSE mode and headers already sent, send error as event
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -428,39 +481,47 @@ app.post('/api/generate-tickets', authenticateToken, async (req, res) => {
   }
 });
 
-// Step 3: Submit to Jira
-app.post('/api/submit-to-jira', authenticateToken, async (req, res) => {
+// Step 3: Submit tickets/work items to the configured provider
+async function handleSubmitTickets(req, res) {
   const { tickets } = req.body;
   if (!tickets || !tickets.length) {
     return res.status(400).json({ error: 'No tickets provided' });
   }
 
-  // Build auth config — try OAuth first, fall back to env vars
+  const info = getProviderInfo();
+
+  // Build auth config — for Jira, try OAuth first then env vars; for ADO, use env vars
   let auth;
-  try {
-    const tokenInfo = await getValidAccessToken(req.sessionId);
-    if (tokenInfo) {
-      auth = {
-        authHeader: `Bearer ${tokenInfo.accessToken}`,
-        baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
-        siteUrl: tokenInfo.siteUrl,
-      };
+  if (PROVIDER === 'jira') {
+    try {
+      const tokenInfo = await getValidAccessToken(req.sessionId);
+      if (tokenInfo) {
+        auth = {
+          authHeader: `Bearer ${tokenInfo.accessToken}`,
+          baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
+          siteUrl: tokenInfo.siteUrl,
+        };
+      }
+    } catch (err) {
+      console.error('OAuth token error, falling back to env vars:', err.message);
     }
-  } catch (err) {
-    console.error('OAuth token error, falling back to env vars:', err.message);
   }
 
   if (!auth) {
     try {
-      auth = buildJiraAuthFromEnv();
+      auth = buildAuthFromEnv();
     } catch (err) {
-      return res.status(401).json({ error: 'Not connected to Jira. Please connect your account first.' });
+      return res.status(401).json({ error: `Not connected to ${info.displayName}. Please check configuration.` });
     }
   }
 
-  const result = await sharedSubmitToJira(tickets, auth);
+  const result = await sharedSubmitTickets(tickets, auth);
   res.json(result);
-});
+}
+
+app.post('/api/submit-tickets', authenticateToken, handleSubmitTickets);
+// Backwards compatibility alias
+app.post('/api/submit-to-jira', authenticateToken, handleSubmitTickets);
 
 // ==================== VTT Upload & Action Item Extraction ====================
 
@@ -502,11 +563,19 @@ app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (
     const transcript = parseVTT(vttText);
     if (!transcript.trim()) return res.status(400).json({ error: 'Could not parse any content from VTT file' });
 
+    // Word limit check
+    const wordCount = countWords(transcript);
+    if (wordCount > MAX_TRANSCRIPT_WORDS) {
+      return res.status(413).json({
+        error: `Transcript too long: ${wordCount.toLocaleString()} words (limit: ${MAX_TRANSCRIPT_WORDS.toLocaleString()}). Please trim the transcript or split into separate meetings.`,
+      });
+    }
+
     const projectKey = req.body.projectKey || process.env.JIRA_PROJECT_KEY || 'KAN';
     const apiKey = process.env.OPENAI_API_KEY;
 
     // Step 1: Generate PRD from transcript (shared service)
-    const { prd: prdContent, title } = await sharedGeneratePRD(transcript, apiKey);
+    const { prd: prdContent, title, usage, warnings } = await sharedGeneratePRD(transcript, apiKey);
 
     // Save PRD to database
     const prdResult = db.prepare(
@@ -523,6 +592,9 @@ app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (
       prdTitle: title,
       tickets,
       submitted: false,
+      wordCount,
+      usage,
+      warnings,
     });
   } catch (err) {
     console.error('VTT upload error:', err);
@@ -530,35 +602,64 @@ app.post('/api/vtt/upload', authenticateToken, upload.single('vttFile'), async (
   }
 });
 
-// Submit previously extracted VTT tickets to Jira
-app.post('/api/vtt/submit-tickets', authenticateToken, async (req, res) => {
-  const { tickets } = req.body;
-  if (!tickets || !tickets.length) return res.status(400).json({ error: 'No tickets provided' });
-
-  // Build auth config — try OAuth first, fall back to env vars
-  let auth;
+// SSE endpoint for VTT upload with progress streaming (long transcripts)
+app.post('/api/vtt/upload-stream', authenticateToken, upload.single('vttFile'), async (req, res) => {
   try {
-    const tokenInfo = await getValidAccessToken(req.sessionId);
-    if (tokenInfo) {
-      auth = {
-        authHeader: `Bearer ${tokenInfo.accessToken}`,
-        baseUrl: `https://api.atlassian.com/ex/jira/${tokenInfo.cloudId}`,
-        siteUrl: tokenInfo.siteUrl,
-      };
-    }
-  } catch (err) { /* fall through */ }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  if (!auth) {
-    try {
-      auth = buildJiraAuthFromEnv();
-    } catch (err) {
-      return res.status(401).json({ error: 'Not connected to Jira' });
+    const vttText = req.file.buffer.toString('utf-8');
+    const transcript = parseVTT(vttText);
+    if (!transcript.trim()) return res.status(400).json({ error: 'Could not parse any content from VTT file' });
+
+    const wordCount = countWords(transcript);
+    if (wordCount > MAX_TRANSCRIPT_WORDS) {
+      return res.status(413).json({
+        error: `Transcript too long: ${wordCount.toLocaleString()} words (limit: ${MAX_TRANSCRIPT_WORDS.toLocaleString()}).`,
+      });
+    }
+
+    const projectKey = req.body.projectKey || process.env.JIRA_PROJECT_KEY || 'KAN';
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    // Set up SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const sendEvent = (data) => { res.write(`data: ${JSON.stringify(data)}\n\n`); };
+    const onProgress = (progress) => { sendEvent({ type: 'progress', ...progress }); };
+
+    sendEvent({ type: 'progress', phase: 'start', message: `Processing ${wordCount.toLocaleString()} word transcript...`, totalWords: wordCount });
+
+    const { prd: prdContent, title, usage, warnings } = await sharedGeneratePRD(transcript, apiKey, { onProgress });
+
+    const prdResult = db.prepare(
+      'INSERT INTO prds (title, transcript, content, project_key, created_by) VALUES (?, ?, ?, ?, ?)'
+    ).run(title, transcript, prdContent, projectKey, req.user.id);
+
+    sendEvent({ type: 'progress', phase: 'tickets', message: 'Generating tickets...' });
+    const { tickets } = await sharedGenerateTickets(prdContent, projectKey, apiKey);
+
+    sendEvent({
+      type: 'complete',
+      transcript, prd: prdContent, prdId: prdResult.lastInsertRowid,
+      prdTitle: title, tickets, submitted: false, wordCount, usage, warnings,
+    });
+    res.end();
+  } catch (err) {
+    console.error('VTT upload stream error:', err);
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err.message });
     }
   }
-
-  const result = await sharedSubmitToJira(tickets, auth);
-  res.json(result);
 });
+
+// Submit previously extracted VTT tickets to the configured provider
+app.post('/api/vtt/submit-tickets', authenticateToken, handleSubmitTickets);
 
 // ==================== Teams Bot Integration ====================
 // Mount the Teams bot on this same Express server so Azure App Service

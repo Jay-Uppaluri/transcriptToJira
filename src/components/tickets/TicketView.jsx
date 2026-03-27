@@ -16,7 +16,7 @@ function textToADF(text) {
 export default function TicketView({
   tickets, setTickets, projectKey, connection, submitting,
   submitResult, submittedSiteUrl, currentUser,
-  onSubmitToJira, onBack,
+  onSubmitTickets, provider, onBack,
 }) {
   const isConnected = connection?.connected;
 
@@ -63,24 +63,24 @@ export default function TicketView({
               </button>
               <ChevronRight size={14} className="text-[#c4c4c0] shrink-0" />
               <span className="text-[#37352f] font-medium truncate max-w-[300px]">
-                Jira Tickets
+                {provider.itemLabelPlural}
               </span>
               <span className="text-xs text-[#9b9a97] ml-1">({tickets.length})</span>
             </nav>
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center gap-1.5 bg-[rgba(55,53,47,0.06)] text-[#37352f] text-xs font-medium px-3 py-1 rounded-[3px]">
-                {connection?.siteName || projectKey || 'Jira'}
+                {connection?.siteName || projectKey || provider.displayName}
               </span>
-              {!isConnected && (
-                <a href="/auth/login" className="text-xs text-[#2383e2] hover:text-[#1b6abf] underline">Connect Jira</a>
+              {!isConnected && provider.name === 'jira' && (
+                <a href="/auth/login" className="text-xs text-[#2383e2] hover:text-[#1b6abf] underline">Connect {provider.displayName}</a>
               )}
               <button
-                onClick={onSubmitToJira}
-                disabled={submitting || !isConnected || tickets.length === 0}
+                onClick={onSubmitTickets}
+                disabled={submitting || (provider.name === 'jira' && !isConnected) || tickets.length === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-[#2383e2] text-white rounded-[3px] hover:bg-[#1b6abf] disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
               >
                 {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                {submitting ? 'Pushing...' : 'Push Tickets to Jira'}
+                {submitting ? 'Pushing...' : `Push ${provider.itemLabelPlural} to ${provider.displayName}`}
               </button>
             </div>
           </div>
@@ -90,8 +90,8 @@ export default function TicketView({
       <div className="max-w-5xl mx-auto px-6 pt-8 pb-20">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-medium text-[#37352f]">{tickets.length} Jira Ticket{tickets.length !== 1 ? 's' : ''}</h2>
-          <p className="text-xs text-[#9b9a97]">Edit, delete, or add tickets before submitting to Jira</p>
+          <h2 className="text-lg font-medium text-[#37352f]">{tickets.length} {provider.itemLabel}{tickets.length !== 1 ? 's' : ''}</h2>
+          <p className="text-xs text-[#9b9a97]">Edit, delete, or add {provider.itemLabelPlural.toLowerCase()} before submitting to {provider.displayName}</p>
         </div>
       </div>
       <div className="space-y-3 mb-4">
@@ -110,7 +110,7 @@ export default function TicketView({
             <p>Error: {submitResult.error}</p>
           ) : (
             <div>
-              <p className="font-medium">{submitResult.created}/{submitResult.total} tickets created in Jira</p>
+              <p className="font-medium">{submitResult.created}/{submitResult.total} {provider.itemLabelPlural.toLowerCase()} created in {provider.displayName}</p>
               {submitResult.failed > 0 && <p className="mt-1">{submitResult.failed} failed</p>}
               {submitResult.results && submitResult.results.map((r, i) => (
                 <div key={i} className="mt-1 text-xs">

@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, FileText, Loader2, CheckCircle, XCircle, ArrowRight, Send, ChevronDown, ChevronUp, Trash2, ExternalLink, ArrowLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-export default function VTTUpload({ token, connection }) {
+export default function VTTUpload({ token, connection, provider }) {
   const [file, setFile] = useState(null);
   const [projectKey, setProjectKey] = useState('KAN');
   const [loading, setLoading] = useState(false);
@@ -17,6 +17,8 @@ export default function VTTUpload({ token, connection }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
   const [expandedTranscript, setExpandedTranscript] = useState(false);
+  const [progressMessages, setProgressMessages] = useState([]);
+  const [estimatedTime, setEstimatedTime] = useState(null);
   const fileInputRef = useRef(null);
 
   function handleDrop(e) {
@@ -31,33 +33,91 @@ export default function VTTUpload({ token, connection }) {
     if (f) { setFile(f); setError(''); }
   }
 
+  /**
+   * Estimate processing time based on word count.
+   * ~10s for short, ~5s per chunk for long transcripts.
+   */
+  function getEstimatedTime(wordCount) {
+    if (wordCount <= 8000) return 10;
+    const chunks = Math.ceil(wordCount / 4000);
+    return chunks * 5 + 15; // parallel chunks + merge + PRD gen
+  }
+
   async function processFile() {
     if (!file) return;
     setLoading(true);
     setError('');
+    setProgressMessages([]);
 
     const formData = new FormData();
     formData.append('vttFile', file);
     formData.append('projectKey', projectKey);
 
     try {
-      const res = await fetch('/api/vtt/upload', {
+      // First, try the streaming endpoint for progress updates
+      const res = await fetch('/api/vtt/upload-stream', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
         body: formData,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setTranscript(data.transcript);
-      setPrd(data.prd);
-      setPrdTitle(data.prdTitle || 'Untitled PRD');
-      setTickets(data.tickets || []);
-      setStep('prd');
+
+      const contentType = res.headers.get('content-type') || '';
+
+      if (contentType.includes('text/event-stream')) {
+        // SSE mode — read progress events
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.type === 'progress') {
+                setProgressMessages(prev => [...prev, event.message]);
+                if (event.totalWords) {
+                  setEstimatedTime(getEstimatedTime(event.totalWords));
+                }
+              } else if (event.type === 'complete') {
+                setTranscript(event.transcript);
+                setPrd(event.prd);
+                setPrdTitle(event.prdTitle || 'Untitled PRD');
+                setTickets(event.tickets || []);
+                setStep('prd');
+              } else if (event.type === 'error') {
+                throw new Error(event.error);
+              }
+            } catch (parseErr) {
+              if (parseErr.message !== 'Unexpected end of JSON input') throw parseErr;
+            }
+          }
+        }
+      } else {
+        // Non-SSE fallback (short transcripts or server doesn't support SSE)
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        setTranscript(data.transcript);
+        setPrd(data.prd);
+        setPrdTitle(data.prdTitle || 'Untitled PRD');
+        setTickets(data.tickets || []);
+        setStep('prd');
+      }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
+      setProgressMessages([]);
+      setEstimatedTime(null);
     }
   }
 
@@ -122,7 +182,7 @@ export default function VTTUpload({ token, connection }) {
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-[#37352f] mb-2">Upload Meeting Transcript</h1>
-        <p className="text-[#787774] text-base">Upload a .vtt file → Generate PRD → Create Jira tickets.</p>
+        <p className="text-[#787774] text-base">Upload a .vtt file → Generate PRD → Create {provider?.itemLabelPlural || 'tickets'}.</p>
       </div>
 
       {/* Step indicator */}
@@ -174,7 +234,7 @@ export default function VTTUpload({ token, connection }) {
 
           <div className="flex items-center gap-4">
             <div>
-              <label className="block text-sm font-medium text-[#37352f] mb-1">Jira Project Key</label>
+              <label className="block text-sm font-medium text-[#37352f] mb-1">Project Key</label>
               <input
                 type="text"
                 value={projectKey}
@@ -187,9 +247,29 @@ export default function VTTUpload({ token, connection }) {
               disabled={!file || loading}
               className="mt-6 px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {loading ? <><Loader2 size={16} className="animate-spin" /> Analyzing transcript...</> : <><ArrowRight size={16} /> Generate PRD & Tickets</>}
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Processing...</> : <><ArrowRight size={16} /> Generate PRD & Tickets</>}
             </button>
           </div>
+
+          {/* Progress messages for long transcripts */}
+          {loading && progressMessages.length > 0 && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Loader2 size={16} className="animate-spin text-blue-600" />
+                <span className="text-sm font-medium text-blue-800">
+                  Processing long transcript...
+                  {estimatedTime && <span className="font-normal text-blue-600 ml-1">(est. ~{estimatedTime}s)</span>}
+                </span>
+              </div>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {progressMessages.map((msg, i) => (
+                  <p key={i} className={`text-xs ${i === progressMessages.length - 1 ? 'text-blue-700 font-medium' : 'text-blue-500'}`}>
+                    {i === progressMessages.length - 1 ? '▶' : '✓'} {msg}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -243,7 +323,7 @@ export default function VTTUpload({ token, connection }) {
         <div className="space-y-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-[#37352f]">
-              Jira Tickets ({tickets.length})
+              {provider?.itemLabelPlural || 'Tickets'} ({tickets.length})
             </h2>
             <div className="flex gap-2">
               <button onClick={() => setStep('prd')} className="px-4 py-2 text-sm border border-[#e9e8e4] rounded-md hover:bg-[#f1f1ef] flex items-center gap-2">
@@ -254,7 +334,7 @@ export default function VTTUpload({ token, connection }) {
                 disabled={submitting || !tickets.length}
                 className="px-6 py-2 bg-[#2383e2] text-white rounded-md text-sm font-medium hover:bg-[#1b6ec2] disabled:opacity-50 flex items-center gap-2"
               >
-                {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {tickets.length} Tickets</>}
+                {submitting ? <><Loader2 size={16} className="animate-spin" /> Creating...</> : <><Send size={16} /> Create {tickets.length} {provider?.itemLabelPlural || 'Tickets'}</>}
               </button>
             </div>
           </div>

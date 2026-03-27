@@ -113,9 +113,9 @@ async function submitToJira(tickets, auth) {
 
     const result = await createJiraIssue(ticket, authHeader, baseUrl);
 
-    if (!result.success && result.error?.includes('operation')) {
+    if (!result.success) {
       // Retry with minimal fields — strip everything except required fields
-      console.log(`[jira] Retrying "${summary}" with minimal fields...`);
+      console.log(`[jira] Retrying "${summary}" with minimal fields (error: ${result.error})...`);
       const minimalTicket = {
         fields: {
           project: ticket.fields.project,
@@ -126,7 +126,16 @@ async function submitToJira(tickets, auth) {
       };
       if (ticket.fields.priority) minimalTicket.fields.priority = ticket.fields.priority;
       const retryResult = await createJiraIssue(minimalTicket, authHeader, baseUrl);
-      results.push({ ...retryResult, summary });
+
+      if (!retryResult.success && retryResult.error?.includes('issuetype')) {
+        // Issue type might not exist (e.g., "Epic" not available) — retry as "Task"
+        console.log(`[jira] Retrying "${summary}" as Task...`);
+        minimalTicket.fields.issuetype = { name: 'Task' };
+        const retryResult2 = await createJiraIssue(minimalTicket, authHeader, baseUrl);
+        results.push({ ...retryResult2, summary });
+      } else {
+        results.push({ ...retryResult, summary });
+      }
     } else {
       results.push({ ...result, summary });
     }
